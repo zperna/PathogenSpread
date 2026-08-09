@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Virtual environment
+.venv/
+
+# ArcGIS Pro project: geodatabases, source rasters, .aprx -- large binary
+# GIS data that doesn't belong in git. The flat, arcpy-free exports this
+# feeds (data/, outputs/) are tracked instead.
+PathogenProject/
+
+# Redundant backup zip of PathogenPy/, which is already tracked as source
+PathogenPy.zip
