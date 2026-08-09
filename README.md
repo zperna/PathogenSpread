@@ -25,6 +25,12 @@ and produces an explainable 0-1 risk score per tree (`compute_risk`) or per
 grid cell (`compute_risk_raster`). Everything is simple, inspectable math
 (distance-decay kernels, weighted environmental match) -- no opaque models.
 
+The real-site pipeline's output GeoTIFF loaded back into `PathogenProject.aprx`,
+showing the Red Ring Rot risk raster (dark hotspot, peak at the known case)
+over the real parcel:
+
+![Red Ring Rot site risk raster in ArcGIS Pro](docs/images/red_ring_rot_risk_pro_preview.png)
+
 ## Repository layout
 
 ```
