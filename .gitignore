@@ -13,3 +13,6 @@ PathogenProject/
 
 # Redundant backup zip of PathogenPy/, which is already tracked as source
 PathogenPy.zip
+
+# ArcGIS schema-lock files created while a raster is open in Pro
+*.sr.lock

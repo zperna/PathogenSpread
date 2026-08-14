@@ -59,16 +59,42 @@ def run_one(pathogen_key, site_name, output_basename):
     print(f"[{pathogen_key}] Risk range: {risk.min():.3f} - {risk.max():.3f}, mean {risk.mean():.3f}")
     print(f"[{pathogen_key}] Known/source cases: {len(sources)}")
 
+    # Zoom to the risk footprint and auto-scale the color range to its own
+    # data, rather than a shared 0-1 scale across the full 2km AOI. A fixed
+    # 0-1 scale makes tight, low-magnitude footprints (e.g. phytophthora's
+    # 25m dispersal radius topping out around 0.13) look flat/empty even
+    # though the raster has real structure -- see docs/notes/
+    # real_site_risk_raster.md's resolution-bump verification.
+    resolution_m = environment["resolution_m"]
+    nonzero_rows, nonzero_cols = np.nonzero(risk)
+    source_cols = np.clip(
+        ((sources["x"].to_numpy() - environment["origin_x"]) / resolution_m).astype(int),
+        0, risk.shape[1] - 1,
+    )
+    source_rows = np.clip(
+        ((sources["y"].to_numpy() - environment["origin_y"]) / resolution_m).astype(int),
+        0, risk.shape[0] - 1,
+    )
+    all_rows = np.concatenate([nonzero_rows, source_rows])
+    all_cols = np.concatenate([nonzero_cols, source_cols])
+
+    pad_cells = 10
+    r0 = max(0, all_rows.min() - pad_cells)
+    r1 = min(risk.shape[0], all_rows.max() + pad_cells + 1)
+    c0 = max(0, all_cols.min() - pad_cells)
+    c1 = min(risk.shape[1], all_cols.max() + pad_cells + 1)
+    window = risk[r0:r1, c0:c1]
+
     extent = [
-        environment["origin_x"],
-        environment["origin_x"] + risk.shape[1] * environment["resolution_m"],
-        environment["origin_y"],
-        environment["origin_y"] + risk.shape[0] * environment["resolution_m"],
+        environment["origin_x"] + c0 * resolution_m,
+        environment["origin_x"] + c1 * resolution_m,
+        environment["origin_y"] + r0 * resolution_m,
+        environment["origin_y"] + r1 * resolution_m,
     ]
     fig, ax = plt.subplots(figsize=(7, 7))
-    im = ax.imshow(risk, cmap="YlOrRd", vmin=0, vmax=1, origin="lower", extent=extent)
+    im = ax.imshow(window, cmap="YlOrRd", origin="lower", extent=extent)
     ax.scatter(sources["x"], sources["y"], c="black", marker="x", s=90, label="known case")
-    ax.set_title(f"{config['display_name']} site risk raster")
+    ax.set_title(f"{config['display_name']} site risk raster\n(zoomed to footprint, peak {risk.max():.3f})")
     ax.set_xlabel("x (m, UTM 10N)")
     ax.set_ylabel("y (m, UTM 10N)")
     ax.legend(loc="upper right", fontsize=8)

@@ -186,3 +186,28 @@ reprojection, same as before) still triggers as expected and is logged.
   took no changes for this -- resolution was already a `grid_meta.json`
   parameter, not hardcoded, so this was purely a data re-export plus
   re-run, not an engine change.
+
+### Preview scaling fix (2026-08-14)
+The resolution bump's finer-grained structure was real but invisible in
+`run_real_site_risk_raster.py`'s preview PNG: it plotted the full 2km AOI
+with a fixed 0-1 color scale shared across pathogens, so phytophthora's
+~40m-wide, 0.13-peak footprint rendered as a flat pale rectangle --
+indistinguishable from "nothing here." Confirmed via a throwaway diagnostic
+script that the raster itself had real, asymmetric structure (16 distinct
+nonzero cells, peak cell offset from the known case's literal point location
+due to soil/terrain modulation) that the shipped preview simply couldn't
+show at that scale.
+
+Fixed `run_one()`'s plotting to crop to the risk footprint (bounding box of
+nonzero cells + source points, padded 10 cells) and auto-scale the color
+range to that window's own data instead of a fixed 0-1 scale, with the
+actual peak value in the title. Re-ran both pathogens:
+- `phytophthora`: now shows a clean, tight radial gradient centered near
+  the known case.
+- `red_ring_rot`: now shows a visibly irregular, non-radially-symmetric
+  blob -- land cover/terrain modulation is clearly shaping the footprint,
+  not just distance decay.
+
+This is a visualization-only fix (`spread_engine.py` and the underlying
+risk arrays are unchanged) -- no modeling-behavior verification needed
+beyond confirming the two preview PNGs regenerated correctly.
