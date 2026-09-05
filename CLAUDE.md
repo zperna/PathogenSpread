@@ -1,5 +1,18 @@
 # CLAUDE.md
 
+## Claude parameters
+Answer in STE (Simplified Technical English).
+Short declarative sentences with one idea each.
+No Metaphors.
+Outline steps in numbered lists
+
+Keep explanations brief.
+Do not use overly complex or eloquent language.
+Use em dashes rarely.
+Additionally, steer clear of overly smooth or repetitive phrasing, and ensure your writing reflects a natural variation in sentence structure.
+
+
+
 ## Project purpose
 This workspace contains a prototype Python project for pathogen spread risk modeling. The current goal is to build an explainable, extensible risk-flagging system for tree health and invasive pathogen scenarios.
 

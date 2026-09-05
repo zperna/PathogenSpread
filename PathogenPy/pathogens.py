@@ -28,7 +28,7 @@ environmental_triggers: rough conditions that increase infection likelihood.
     "how close to ideal" scores you'll compute from real climate/soil data later.
 
 spatial_weights: how much each raster surface (land_cover, soil, terrain,
-    moisture, temp) contributes to environmental_match in raster risk mode
+    wetness, exposure, moisture, temp) contributes to environmental_match in raster risk mode
     (see spread_engine.compute_risk_raster). Reason these through per
     pathogen's actual transmission_mode -- e.g. soil drainage is a direct
     driver for a soil-borne pathogen but at most a weak proxy for an
@@ -74,11 +74,18 @@ PATHOGENS = {
         },
         # Root contact + local water movement -- soil drainage is a direct
         # transmission driver here (unlike red_ring_rot, see spatial_weights
-        # note above), terrain is a proxy for where water pools, land_cover
-        # for host/canopy contact density.
+        # note above), wetness (topographic wetness index -- see
+        # docs/feature_contracts/topographic_wetness_index.md) is a proxy
+        # for where water pools, land_cover for host/canopy contact density.
+        # wetness replaced the old slope/aspect-based `terrain` entry here:
+        # TWI is a direct measure of upslope water accumulation, a better
+        # fit for this pathogen's "where water pools" driver than
+        # slope/aspect alone. red_ring_rot keeps `terrain` -- wind exposure
+        # and water accumulation are different physical quantities, TWI
+        # isn't a substitute proxy for the former.
         "spatial_weights": {
             "soil": 0.55,
-            "terrain": 0.25,
+            "wetness": 0.25,
             "land_cover": 0.2,
         },
         "stress_multiplier": 1.5,
@@ -98,6 +105,21 @@ PATHOGENS = {
             "temp_weight": 0.3,
             "moisture_weight": 0.7,   # cool wet spring conditions
         },
+        # Wind + rain splash, canopy-to-canopy, short range (200m) -- land_cover
+        # (host canopy density) is the main driver spread actually needs to move
+        # through. wetness (TWI -- see docs/feature_contracts/
+        # topographic_wetness_index.md) stands in for the "cool wet spring
+        # conditions" driver above, same role phytophthora gives it, just a
+        # foliar-humidity proxy here instead of a root-zone-moisture one.
+        # exposure/terrain are deliberately left out: unlike red_ring_rot's
+        # wound-infection pathway, rain-splash dispersal at this range isn't
+        # well explained by ridge/wind-exposure position -- see
+        # docs/feature_contracts/wind_dispersal_and_soil_reweight.md's
+        # spatial_weights guidance against copying another pathogen's surfaces.
+        "spatial_weights": {
+            "land_cover": 0.6,
+            "wetness": 0.4,
+        },
         "stress_multiplier": 1.2,
     },
     "red_ring_rot": {
@@ -115,15 +137,20 @@ PATHOGENS = {
             "moisture_weight": 0.2,   # reduced from soil-borne-pathogen levels -- see spatial_weights note
         },
         # Airborne/wound-infecting, not soil-borne: land_cover (host
-        # presence/stand density) and terrain (slope/aspect, our current
-        # proxy for wind exposure -- see spatial_inputs.score_terrain) are
-        # the defensible drivers. soil is dropped entirely (that weight
-        # belongs on phytophthora instead); moisture kept small as a
-        # plausible factor in spore germination at the wound site, not a
-        # primary driver.
+        # presence/stand density) and exposure (topographic position index
+        # -- ridge/convex terrain sees more wind, a direction-independent
+        # proxy for wind exposure/windthrow risk -- see
+        # docs/feature_contracts/wind_exposure_index.md) are the defensible
+        # drivers. soil is dropped entirely (that weight belongs on
+        # phytophthora instead); moisture kept small as a plausible factor
+        # in spore germination at the wound site, not a primary driver.
+        # exposure replaced the old slope/aspect-based `terrain` entry here
+        # (same 0.35 weight) -- TPI is a better fit for "wind exposure"
+        # specifically than generic slope/aspect; phytophthora's wetness
+        # swap was the same kind of change for a different physical claim.
         "spatial_weights": {
             "land_cover": 0.45,
-            "terrain": 0.35,
+            "exposure": 0.35,
             "moisture": 0.15,
             "temp": 0.05,
         },

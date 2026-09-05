@@ -27,12 +27,40 @@ def _distance_matrix(sources_xy, targets_xy):
     return np.sqrt((diff ** 2).sum(axis=2))
 
 
-def _dispersal_kernel(distance_m, decay_rate, max_dispersal_m):
+def _bearing_matrix(sources_xy, targets_xy):
+    """Compass bearing (degrees, 0=north/90=east, clockwise) from each
+    source to each target -- same shape as _distance_matrix, and the
+    convention IEM wind rose directions use (see fetch_wind_rose.py)."""
+    diff = targets_xy[:, None, :] - sources_xy[None, :, :]
+    dx, dy = diff[..., 0], diff[..., 1]
+    return np.degrees(np.arctan2(dx, dy)) % 360
+
+
+def _dispersal_kernel(distance_m, decay_rate, max_dispersal_m, bearing_deg=None, wind_bias=None):
     """
     Exponential decay kernel, hard-capped at max_dispersal_distance.
     Distance = 0 -> risk contribution 1.0. Beyond max_dispersal -> 0.
+
+    When bearing_deg (source->target compass bearing, from _bearing_matrix)
+    and wind_bias (a {prevailing_direction_deg, directionality_strength}
+    dict, e.g. loaded from a site's wind_rose.json) are both given, the
+    decay rate is nudged by how aligned each target is with the downwind
+    direction: slower decay (farther reach) downwind of a source, faster
+    decay (shorter reach) upwind, blended by directionality_strength
+    between 0 (unchanged, isotropic) and 1 (full swing). This replaces the
+    plain isotropic call in that case -- see
+    docs/feature_contracts/wind_dispersal_and_soil_reweight.md Part B.
+    prevailing_direction_deg is the direction wind blows FROM (standard
+    meteorological convention, matching IEM), so downwind is +180 deg.
     """
-    kernel = np.exp(-decay_rate * distance_m)
+    if bearing_deg is not None and wind_bias is not None:
+        downwind_deg = (wind_bias["prevailing_direction_deg"] + 180) % 360
+        alignment = np.cos(np.radians(bearing_deg - downwind_deg))
+        effective_decay_rate = decay_rate * (1 - wind_bias["directionality_strength"] * alignment)
+    else:
+        effective_decay_rate = decay_rate
+
+    kernel = np.exp(-effective_decay_rate * distance_m)
     kernel = np.where(distance_m > max_dispersal_m, 0.0, kernel)
     return kernel
 
@@ -77,7 +105,7 @@ def _combine_spatial_environment(pathogen_config: dict, environment: dict, targe
     return np.sum(weighted_values, axis=0) / total_weight
 
 
-def compute_risk(inventory: pd.DataFrame, pathogen_config: dict, environment: dict = None):
+def compute_risk(inventory: pd.DataFrame, pathogen_config: dict, environment: dict = None, wind: dict = None):
     """
     Computes a 0-1 risk score for every non-infected tree in the inventory.
 
@@ -88,6 +116,11 @@ def compute_risk(inventory: pd.DataFrame, pathogen_config: dict, environment: di
     environment : optional dict from synthetic_data.generate_environment_grid
         (or real raster data in the same shape) -- if omitted, environmental
         match defaults to a neutral 0.5 for every tree.
+    wind : optional {prevailing_direction_deg, directionality_strength} dict
+        (e.g. loaded from a site's wind_rose.json). Only applied when
+        pathogen_config["transmission_mode"] is "airborne" or "vector" --
+        see _dispersal_kernel and docs/feature_contracts/
+        wind_dispersal_and_soil_reweight.md Part B.
 
     Returns
     -------
@@ -106,10 +139,15 @@ def compute_risk(inventory: pd.DataFrame, pathogen_config: dict, environment: di
     target_xy = targets[["x", "y"]].to_numpy()
 
     dist = _distance_matrix(source_xy, target_xy)  # shape (n_targets, n_sources)
+    bearing = None
+    if wind is not None and pathogen_config.get("transmission_mode") in ("airborne", "vector"):
+        bearing = _bearing_matrix(source_xy, target_xy)
     kernel = _dispersal_kernel(
         dist,
         decay_rate=pathogen_config["decay_rate"],
         max_dispersal_m=pathogen_config["max_dispersal_distance_m"],
+        bearing_deg=bearing,
+        wind_bias=wind,
     )
     # risk from nearest/strongest source, not sum of all sources
     # (avoids unrealistic stacking when many sources are far away)
@@ -162,7 +200,7 @@ def compute_risk(inventory: pd.DataFrame, pathogen_config: dict, environment: di
     return df
 
 
-def compute_risk_raster(pathogen_config: dict, environment: dict, source_xy: np.ndarray):
+def compute_risk_raster(pathogen_config: dict, environment: dict, source_xy: np.ndarray, wind: dict = None):
     """
     Computes a 0-1 site-suitability risk surface for every cell of the
     environment grid, given known infection source point(s), instead of
@@ -186,6 +224,11 @@ def compute_risk_raster(pathogen_config: dict, environment: dict, source_xy: np.
         surfaces, to define the raster's shape.
     source_xy : (n_sources, 2) array of known infection point coordinates,
         in the same real-world units as environment's origin_x/origin_y.
+    wind : optional {prevailing_direction_deg, directionality_strength} dict
+        (e.g. loaded from a site's wind_rose.json). Only applied when
+        pathogen_config["transmission_mode"] is "airborne" or "vector" --
+        see _dispersal_kernel and docs/feature_contracts/
+        wind_dispersal_and_soil_reweight.md Part B.
 
     Returns
     -------
@@ -213,10 +256,15 @@ def compute_risk_raster(pathogen_config: dict, environment: dict, source_xy: np.
     cell_xy = np.column_stack([grid_x.ravel(), grid_y.ravel()])
 
     dist = _distance_matrix(source_xy, cell_xy)
+    bearing = None
+    if wind is not None and pathogen_config.get("transmission_mode") in ("airborne", "vector"):
+        bearing = _bearing_matrix(source_xy, cell_xy)
     kernel = _dispersal_kernel(
         dist,
         decay_rate=pathogen_config["decay_rate"],
         max_dispersal_m=pathogen_config["max_dispersal_distance_m"],
+        bearing_deg=bearing,
+        wind_bias=wind,
     )
     dispersal_score = kernel.max(axis=1)
 

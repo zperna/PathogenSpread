@@ -1,0 +1,12 @@
+{
+  "origin_x": 492656.487681256,
+  "origin_y": 4876154.410327731,
+  "resolution_m": 10,
+  "n_rows": 200,
+  "n_cols": 200,
+  "area_size_m": 2000,
+  "crs": "EPSG:32610",
+  "array_row_convention": "bottom-up (row 0 = origin_y)",
+  "centroid_lat": 44.04752502537563,
+  "centroid_lon": -123.07918493873609
+}

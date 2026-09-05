@@ -6,5 +6,7 @@
   "n_cols": 200,
   "area_size_m": 2000,
   "crs": "EPSG:32610",
-  "array_row_convention": "bottom-up (row 0 = origin_y)"
+  "array_row_convention": "bottom-up (row 0 = origin_y)",
+  "centroid_lat": 43.99987685720152,
+  "centroid_lon": -123.08209048821061
 }

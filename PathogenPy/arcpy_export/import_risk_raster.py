@@ -21,7 +21,7 @@ OUTPUTS_DIR = Path(__file__).resolve().parent.parent.parent / "outputs"
 TARGET_SR = arcpy.SpatialReference(32610)  # must match export_site_layers.py
 
 # output basenames written by run_real_site_risk_raster.py
-OUTPUT_BASENAMES = ["red_ring_rot_site_risk", "phytophthora_site_risk"]
+OUTPUT_BASENAMES = ["red_ring_rot_site_risk", "phytophthora_site_risk", "anthracnose_site_risk"]
 
 
 def import_one(output_basename):

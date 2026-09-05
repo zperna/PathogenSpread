@@ -26,6 +26,7 @@ OUTPUT_DIR = PROJECT_ROOT / "outputs"
 RUNS = [
     ("red_ring_rot", "site", "red_ring_rot_site_risk"),
     ("phytophthora", "site_phytophthora", "phytophthora_site_risk"),
+    ("anthracnose", "site_anthracnose", "anthracnose_site_risk"),
 ]
 
 
@@ -40,7 +41,26 @@ def run_one(pathogen_key, site_name, output_basename):
     source_xy = sources[["x", "y"]].to_numpy()
 
     config = PATHOGENS[pathogen_key]
-    risk = compute_risk_raster(config, environment, source_xy)
+
+    # Site-specific wind rose (see PathogenPy/fetch_wind_rose.py), fed into
+    # compute_risk_raster's optional wind bias -- the engine itself gates
+    # this to airborne/vector transmission_mode, so it's a no-op for a
+    # soil-borne pathogen like phytophthora even though the file exists for
+    # every site. Not stored on the pathogen config in pathogens.py because
+    # prevailing wind is a property of the site's nearest station, not of
+    # the pathogen -- see docs/feature_contracts/
+    # wind_dispersal_and_soil_reweight.md Part B verification note.
+    wind = None
+    wind_rose_path = data_dir / "wind_rose.json"
+    if wind_rose_path.exists():
+        with open(wind_rose_path) as f:
+            wind_rose = json.load(f)
+        wind = {
+            "prevailing_direction_deg": wind_rose["prevailing_direction_deg"],
+            "directionality_strength": wind_rose["directionality_strength"],
+        }
+
+    risk = compute_risk_raster(config, environment, source_xy, wind=wind)
 
     OUTPUT_DIR.mkdir(exist_ok=True)
     np.save(OUTPUT_DIR / f"{output_basename}.npy", risk)

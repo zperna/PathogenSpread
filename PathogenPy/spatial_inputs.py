@@ -56,6 +56,18 @@ DRAINAGE_CLASS_SCORES = {
     "Very poorly drained": 1.00,
 }
 
+# NRCS hydrologic soil group -> suitability score, same ordinal-judgment
+# style as DRAINAGE_CLASS_SCORES: A (well-drained, low runoff/high
+# infiltration) scores low, D (poorly drained, high runoff/low infiltration)
+# scores high -- wetter/poorer infiltration = more favorable to a
+# soil-borne root pathogen. See docs/feature_contracts/soil_water_attributes.md.
+HYDRO_GROUP_SCORES = {
+    "A": 0.15,
+    "B": 0.40,
+    "C": 0.65,
+    "D": 0.90,
+}
+
 
 def normalize_surface(surface, min_value=None, max_value=None):
     """Normalize a surface array to 0-1 based on optional bounds."""
@@ -68,6 +80,22 @@ def normalize_surface(surface, min_value=None, max_value=None):
         return np.zeros_like(arr)
     normalized = (arr - min_value) / (max_value - min_value)
     return np.clip(normalized, 0.0, 1.0)
+
+
+def normalize_surface_ignoring_nan(surface, neutral=0.5):
+    """Per-site min-max normalize, treating NaN cells as neutral rather than
+    including them in the min/max or claiming a real value for them. NaN
+    here means DEM-reprojection NoData at the AOI edge (see
+    export_site_layers.raster_to_bottom_up_array), not missing-but-
+    meaningful data -- there's no basis to call an edge cell wet/dry or
+    exposed/sheltered, so it gets the same neutral treatment as
+    score_terrain's flat-aspect case rather than distorting the real range
+    the way a single extreme sentinel value did before this was caught
+    (see docs/notes/topographic_wetness_index.md)."""
+    valid = np.isfinite(surface)
+    scored = np.full(surface.shape, neutral, dtype=float)
+    scored[valid] = normalize_surface(surface[valid])
+    return scored
 
 
 def score_categorical_surface(categorical_raster, score_map, default=0.0):
@@ -157,13 +185,20 @@ def score_terrain(slope_degrees, aspect_degrees):
 
     arcpy.sa.Aspect returns -1 for flat cells (slope == 0); those are treated
     as aspect-neutral (0.5) rather than propagating -1 into the cosine math.
+
+    NaN cells (DEM reprojection NoData at the AOI edge -- see
+    export_site_layers.raster_to_bottom_up_array) get the same neutral 0.5
+    treatment: no valid slope/aspect to score, not a claim that the cell is
+    actually average.
     """
     slope_score = np.clip(1 - np.abs(slope_degrees - 15) / 30, 0.0, 1.0)
 
     aspect_score = (1 + np.cos(np.radians(aspect_degrees))) / 2
     aspect_score = np.where(aspect_degrees < 0, 0.5, aspect_score)
 
-    return (slope_score + aspect_score) / 2
+    combined = (slope_score + aspect_score) / 2
+    no_data = np.isnan(slope_degrees) | np.isnan(aspect_degrees)
+    return np.where(no_data, 0.5, combined)
 
 
 def load_site_grid(data_dir):
@@ -179,20 +214,62 @@ def load_site_grid(data_dir):
         meta = json.load(f)
     with open(data_dir / "drainage_classes.json") as f:
         drainage_classes = {int(code): name for code, name in json.load(f).items()}
+    with open(data_dir / "hydro_groups.json") as f:
+        hydro_groups = {int(code): name for code, name in json.load(f).items()}
 
     landcover_codes = np.load(data_dir / "landcover.npy")
     soil_codes = np.load(data_dir / "soil_drain_code.npy")
+    hydro_codes = np.load(data_dir / "hydro_group_code.npy")
+    wtdepth_in = np.load(data_dir / "water_table_depth_in.npy")
     slope_degrees = np.load(data_dir / "slope_degrees.npy")
     aspect_degrees = np.load(data_dir / "aspect_degrees.npy")
+    wetness_index = np.load(data_dir / "wetness_index.npy")
+    exposure_index = np.load(data_dir / "exposure_index.npy")
 
     land_cover = score_categorical_surface(landcover_codes, NLCD_SCORE_MAP)
 
     drainage_score_by_code = {
         code: DRAINAGE_CLASS_SCORES.get(name, 0.0) for code, name in drainage_classes.items()
     }
-    soil = score_categorical_surface(soil_codes, drainage_score_by_code)
+    drainage_score = score_categorical_surface(soil_codes, drainage_score_by_code)
+
+    hydro_score_by_code = {
+        code: HYDRO_GROUP_SCORES.get(name, 0.0) for code, name in hydro_groups.items()
+    }
+    hydro_score = score_categorical_surface(hydro_codes, hydro_score_by_code)
+
+    # Shallower water table -> higher suitability. NoData cells were already
+    # filled with a large "deep/dry" sentinel at export time (see
+    # WATER_TABLE_DEPTH_NODATA_SENTINEL_IN in export_site_layers.py), so they
+    # land near 0 here after per-site min-max normalization.
+    wtdepth_score = 1 - normalize_surface(wtdepth_in)
+
+    # Unweighted average of three independently-sourced water/drainage
+    # signals -- see docs/feature_contracts/soil_water_attributes.md for why
+    # no new tunable weights were introduced in this pass.
+    soil = (drainage_score + hydro_score + wtdepth_score) / 3
 
     terrain = score_terrain(slope_degrees, aspect_degrees)
+
+    # Higher TWI = more upslope water accumulation = higher suitability for
+    # a soil/root-rot pathogen -- no inversion needed, unlike water table
+    # depth. Per-site min-max normalized, same pattern as every other
+    # continuous surface here. See
+    # docs/feature_contracts/topographic_wetness_index.md -- this is a
+    # distinct surface from `terrain` (which stays slope/aspect-based, used
+    # as a wind-exposure proxy by red_ring_rot), not a replacement of it.
+    #
+    wetness = normalize_surface_ignoring_nan(wetness_index)
+
+    # Positive TPI (elevation above local neighborhood mean) = ridge/convex
+    # = more wind-exposed = higher suitability for this pathogen's wound-
+    # infection pathway -- no inversion needed, same direction logic as
+    # wetness. See docs/feature_contracts/wind_exposure_index.md -- this is
+    # a distinct surface from `terrain` (still slope/aspect-based, kept
+    # available but no longer used by any pathogen config) and from
+    # `wetness` (a different physical claim -- exposure, not water
+    # accumulation).
+    exposure = normalize_surface_ignoring_nan(exposure_index)
 
     return {
         "area_size_m": meta["area_size_m"],
@@ -202,6 +279,8 @@ def load_site_grid(data_dir):
         "land_cover": land_cover,
         "soil": soil,
         "terrain": terrain,
+        "wetness": wetness,
+        "exposure": exposure,
     }
 
 
