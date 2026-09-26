@@ -105,37 +105,29 @@ def _combine_spatial_environment(pathogen_config: dict, environment: dict, targe
     return np.sum(weighted_values, axis=0) / total_weight
 
 
-def compute_risk(inventory: pd.DataFrame, pathogen_config: dict, environment: dict = None, wind: dict = None):
+def _infection_hazard(source_xy, targets, pathogen_config, environment=None, wind=None):
     """
-    Computes a 0-1 risk score for every non-infected tree in the inventory.
+    Per-step infection hazard (0-1) for a set of currently-susceptible
+    trees, given a set of currently-infected source points. This is the
+    core compute_risk does for a single step; it is factored out so
+    spread_simulation.simulate_spread can iterate it with a growing
+    source set without duplicating the math (see docs/feature_contracts/
+    temporal_spread_per_tree.md).
 
     Parameters
     ----------
-    inventory : DataFrame with columns x, y, species, stress_index, infected
-    pathogen_config : one of the dicts from pathogens.PATHOGENS
-    environment : optional dict from synthetic_data.generate_environment_grid
-        (or real raster data in the same shape) -- if omitted, environmental
-        match defaults to a neutral 0.5 for every tree.
-    wind : optional {prevailing_direction_deg, directionality_strength} dict
-        (e.g. loaded from a site's wind_rose.json). Only applied when
-        pathogen_config["transmission_mode"] is "airborne" or "vector" --
-        see _dispersal_kernel and docs/feature_contracts/
-        wind_dispersal_and_soil_reweight.md Part B.
+    source_xy : (n_sources, 2) array of infected-tree coordinates.
+    targets : DataFrame of the susceptible trees -- needs x, y, species,
+        stress_index. Its row order defines the output order.
+    pathogen_config, environment, wind : as compute_risk.
 
     Returns
     -------
-    DataFrame: original inventory + a 'risk_score' column (0 for already-
-    infected trees, since they're not "at risk" -- they're the source).
+    (risk, components) where risk is a 0-1 array (len == len(targets)) and
+    components is a dict of the dispersal_score / susceptibility /
+    environmental_match / stress_amplification arrays that multiplied to
+    make it.
     """
-    df = inventory.copy()
-    sources = df[df["infected"]]
-    targets = df[~df["infected"]]
-
-    if sources.empty or targets.empty:
-        df["risk_score"] = 0.0
-        return df
-
-    source_xy = sources[["x", "y"]].to_numpy()
     target_xy = targets[["x", "y"]].to_numpy()
 
     dist = _distance_matrix(source_xy, target_xy)  # shape (n_targets, n_sources)
@@ -182,8 +174,48 @@ def compute_risk(inventory: pd.DataFrame, pathogen_config: dict, environment: di
     # capped so it can't blow past 1.0 downstream
     stress_amp = 1 + (pathogen_config["stress_multiplier"] - 1) * targets["stress_index"].to_numpy()
 
-    raw_risk = dispersal_score * susceptibility * env_match * stress_amp
-    risk = np.clip(raw_risk, 0, 1)
+    risk = np.clip(dispersal_score * susceptibility * env_match * stress_amp, 0, 1)
+    return risk, {
+        "dispersal_score": dispersal_score,
+        "susceptibility": susceptibility,
+        "environmental_match": env_match,
+        "stress_amplification": stress_amp,
+    }
+
+
+def compute_risk(inventory: pd.DataFrame, pathogen_config: dict, environment: dict = None, wind: dict = None):
+    """
+    Computes a 0-1 risk score for every non-infected tree in the inventory.
+
+    Parameters
+    ----------
+    inventory : DataFrame with columns x, y, species, stress_index, infected
+    pathogen_config : one of the dicts from pathogens.PATHOGENS
+    environment : optional dict from synthetic_data.generate_environment_grid
+        (or real raster data in the same shape) -- if omitted, environmental
+        match defaults to a neutral 0.5 for every tree.
+    wind : optional {prevailing_direction_deg, directionality_strength} dict
+        (e.g. loaded from a site's wind_rose.json). Only applied when
+        pathogen_config["transmission_mode"] is "airborne" or "vector" --
+        see _dispersal_kernel and docs/feature_contracts/
+        wind_dispersal_and_soil_reweight.md Part B.
+
+    Returns
+    -------
+    DataFrame: original inventory + a 'risk_score' column (0 for already-
+    infected trees, since they're not "at risk" -- they're the source).
+    """
+    df = inventory.copy()
+    sources = df[df["infected"]]
+    targets = df[~df["infected"]]
+
+    if sources.empty or targets.empty:
+        df["risk_score"] = 0.0
+        return df
+
+    risk, components = _infection_hazard(
+        sources[["x", "y"]].to_numpy(), targets, pathogen_config, environment, wind
+    )
 
     df["risk_score"] = 0.0
     df["dispersal_score"] = 0.0
@@ -192,10 +224,10 @@ def compute_risk(inventory: pd.DataFrame, pathogen_config: dict, environment: di
     df["stress_amplification"] = 1.0
 
     df.loc[targets.index, "risk_score"] = risk
-    df.loc[targets.index, "dispersal_score"] = dispersal_score
-    df.loc[targets.index, "susceptibility"] = susceptibility
-    df.loc[targets.index, "environmental_match"] = env_match
-    df.loc[targets.index, "stress_amplification"] = stress_amp
+    df.loc[targets.index, "dispersal_score"] = components["dispersal_score"]
+    df.loc[targets.index, "susceptibility"] = components["susceptibility"]
+    df.loc[targets.index, "environmental_match"] = components["environmental_match"]
+    df.loc[targets.index, "stress_amplification"] = components["stress_amplification"]
 
     return df
 

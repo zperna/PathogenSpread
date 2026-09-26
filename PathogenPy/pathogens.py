@@ -39,6 +39,17 @@ spatial_weights: how much each raster surface (land_cover, soil, terrain,
 
 stress_multiplier: how much a stressed tree's risk gets amplified.
     1.0 = stress has no effect, 2.0 = stressed trees are 2x as vulnerable.
+
+spread_step: parameters for the multi-generation what-if simulation
+    (spread_simulation.simulate_spread -- see docs/feature_contracts/
+    temporal_spread_per_tree.md). promotion_threshold is the 0-1
+    single-step hazard at which a susceptible tree flips to infected and
+    becomes a source next generation. It is a scenario knob, not a
+    calibrated infection probability -- set per pathogen against its own
+    single-step hazard range at its site (see the design note), and meant
+    to be swept, not trusted as-is. step_label is display text only.
+    Only defined for pathogens wired to a real site; the simulation
+    errors clearly if it is missing.
 """
 
 PATHOGENS = {
@@ -51,9 +62,34 @@ PATHOGENS = {
             "oregon_ash": 1.0,
             "green_ash": 1.0,
         },
+        # Kept but superseded for the real-site path once spatial_weights
+        # (below) is set -- same non-authoritative-but-kept pattern as
+        # red_ring_rot's environmental_triggers. Still authoritative for
+        # a synthetic run with no spatial_weights surfaces available
+        # (e.g. run_prototype.py's generate_environment_grid).
         "environmental_triggers": {
             "temp_weight": 0.6,     # thermal thresholds matter for flight activity
             "moisture_weight": 0.1,
+        },
+        # Vector/flight-based, not wind/rain-dispersed and not root
+        # contact -- a third mechanism distinct from every pathogen that
+        # already has a spatial_weights block. land_cover: the beetle
+        # still needs an actual tree canopy to land in and colonize,
+        # same host/canopy-density role land_cover plays for the other
+        # three. wetness: NOT a moisture-triggers-infection claim like
+        # phytophthora's use of the same surface -- here it is a
+        # host-habitat proxy, since Oregon ash (Fraxinus latifolia) is
+        # characteristically a wetland/riparian species in the
+        # Willamette Valley, so higher TWI stands in for "more likely
+        # ash habitat." Reusing wetness is not the copy-paste mistake
+        # docs/feature_contracts/wind_dispersal_and_soil_reweight.md
+        # warned against -- it's the same surface doing a different,
+        # stated job. exposure/terrain/soil left out: no wind-exposure
+        # wound-infection pathway, no root contact. See
+        # docs/feature_contracts/emerald_ash_borer_spatial_weights.md.
+        "spatial_weights": {
+            "land_cover": 0.7,
+            "wetness": 0.3,
         },
         "stress_multiplier": 1.3,
     },
@@ -72,6 +108,12 @@ PATHOGENS = {
             "temp_weight": 0.2,
             "moisture_weight": 0.9,   # saturated/poorly-drained soil is the main driver
         },
+        # Nominal only: with a 25 m dispersal cap and no POS host inside
+        # that range of the known case (nearest is 84.6 m -- see
+        # docs/feature_contracts/site_tree_host_inventory.md), the
+        # simulation produces zero spread at this site regardless. Kept
+        # so simulate_spread runs for all three real-site pathogens.
+        "spread_step": {"promotion_threshold": 0.05, "step_label": "generation"},
         # Root contact + local water movement -- soil drainage is a direct
         # transmission driver here (unlike red_ring_rot, see spatial_weights
         # note above), wetness (topographic wetness index -- see
@@ -105,6 +147,11 @@ PATHOGENS = {
             "temp_weight": 0.3,
             "moisture_weight": 0.7,   # cool wet spring conditions
         },
+        # Lower than red_ring_rot's: anthracnose's single-step hazards at
+        # site_anthracnose top out near 0.086 (low environmental_match
+        # there), vs red_ring_rot's 0.21. ~p70 of the nonzero hazard,
+        # about 10 first-generation promotions. See the design note.
+        "spread_step": {"promotion_threshold": 0.035, "step_label": "generation"},
         # Wind + rain splash, canopy-to-canopy, short range (200m) -- land_cover
         # (host canopy density) is the main driver spread actually needs to move
         # through. wetness (TWI -- see docs/feature_contracts/
@@ -155,5 +202,10 @@ PATHOGENS = {
             "temp": 0.05,
         },
         "stress_multiplier": 1.4,   # wounds/prior damage are the real entry point
+        # ~p70 of the nonzero single-step hazard at data/site (peak
+        # 0.21), about 5 first-generation promotions -- enough to seed a
+        # front without flipping every host in range at once. See
+        # docs/notes/temporal_spread_per_tree.md.
+        "spread_step": {"promotion_threshold": 0.06, "step_label": "generation"},
     },
 }

@@ -1,9 +1,16 @@
 # Feature contract: Temporal spread iteration
 
 ## Status
-Contract only -- not yet implemented. Written to capture the design intent
-while it's fresh; implementation is deferred until there's a real reason to
-calibrate against (see Non-goals).
+Contract only -- not yet implemented, and stays that way for the *raster*
+path. Written to capture the design intent while it's fresh; implementation
+is deferred until there's a real reason to calibrate against (see
+Non-goals).
+
+The per-tree version of this idea is now a separate active contract:
+`docs/feature_contracts/temporal_spread_per_tree.md` iterates
+`compute_risk` over the real POS host inventory as an explicit what-if
+scenario. That contract also notes that this one's "no directional spread"
+non-goal is stale -- the wind-aware kernel now exists.
 
 ## Problem
 `compute_risk_raster` (see `docs/feature_contracts/real_site_risk_raster.md`)
