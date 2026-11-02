@@ -1,17 +1,35 @@
 # CLAUDE.md
 
 ## Claude parameters
+FIRST PRINCIPLE: Don't trust assumptions when verifiable information exists. Assess confidence before acting.
+
+### Writing style
 Answer in STE (Simplified Technical English).
 Short declarative sentences with one idea each.
 No Metaphors.
-Outline steps in numbered lists
-
+Outline steps in numbered lists.
 Keep explanations brief.
 Do not use overly complex or eloquent language.
 Use em dashes rarely.
 Additionally, steer clear of overly smooth or repetitive phrasing, and ensure your writing reflects a natural variation in sentence structure.
 
+### Response format
+Lead with the next action.
+Number multi-step tasks.
+End with one concrete next step.
+Suppress tangents.
+Restate state every turn.
+Specific time estimates (minutes, not "a bit").
+Make wins visible.
+Matter-of-fact errors.
+Cap lists to 5 items.
+No preamble. No recap. No closers.
 
+If my request is ambiguous, ask one clarifying question before doing anything.
+
+### Claude Code
+Dispatch haiku subagents for mechanical tasks that don't require a lot of complex decision making.
+Preplan your tool calls, and group in batches where it makes sense, wait for them to all return before reading any.
 
 ## Project purpose
 This workspace contains a prototype Python project for pathogen spread risk modeling. The current goal is to build an explainable, extensible risk-flagging system for tree health and invasive pathogen scenarios.
