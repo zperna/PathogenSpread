@@ -1,11 +1,11 @@
 """
-Computes risk rasters over the real Oregon site grids exported by
-PathogenPy/arcpy_export/export_site_layers.py (see
+Computes risk rasters over the real Oregon site grids. The grids are
+exported by PathogenPy/arcpy_export/export_site_layers.py (see
 docs/feature_contracts/real_site_risk_raster.md).
 
-Run with the plain project .venv -- no arcpy required. Requires each
-data/<site_name>/ to already exist (run export_site_layers.py under ArcGIS
-Pro's Python first).
+Run with the plain project .venv. No arcpy is needed. Each data/<site_name>/
+folder must already exist. Run export_site_layers.py under ArcGIS Pro's
+Python first.
 """
 
 import json
@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_ROOT = PROJECT_ROOT / "data"
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 
-# pathogen key in pathogens.PATHOGENS -> (data/<site_name>/, output basename)
+# Each row: pathogen key in pathogens.PATHOGENS, data/<site_name>/, output basename.
 RUNS = [
     ("red_ring_rot", "site", "red_ring_rot_site_risk"),
     ("phytophthora", "site_phytophthora", "phytophthora_site_risk"),
@@ -42,13 +42,13 @@ def run_one(pathogen_key, site_name, output_basename):
 
     config = PATHOGENS[pathogen_key]
 
-    # Site-specific wind rose (see PathogenPy/fetch_wind_rose.py), fed into
-    # compute_risk_raster's optional wind bias -- the engine itself gates
-    # this to airborne/vector transmission_mode, so it's a no-op for a
-    # soil-borne pathogen like phytophthora even though the file exists for
-    # every site. Not stored on the pathogen config in pathogens.py because
-    # prevailing wind is a property of the site's nearest station, not of
-    # the pathogen -- see docs/feature_contracts/
+    # Site-specific wind rose (see PathogenPy/fetch_wind_rose.py). It feeds
+    # the optional wind bias of compute_risk_raster. The engine allows this
+    # bias only for airborne and vector transmission_mode. For a soil-borne
+    # pathogen like phytophthora, the bias does nothing. The file exists for
+    # every site anyway. The wind rose is not stored in the pathogen config
+    # in pathogens.py. The reason: prevailing wind belongs to the site's
+    # nearest station, not to the pathogen. See docs/feature_contracts/
     # wind_dispersal_and_soil_reweight.md Part B verification note.
     wind = None
     wind_rose_path = data_dir / "wind_rose.json"
@@ -79,11 +79,11 @@ def run_one(pathogen_key, site_name, output_basename):
     print(f"[{pathogen_key}] Risk range: {risk.min():.3f} - {risk.max():.3f}, mean {risk.mean():.3f}")
     print(f"[{pathogen_key}] Known/source cases: {len(sources)}")
 
-    # Zoom to the risk footprint and auto-scale the color range to its own
-    # data, rather than a shared 0-1 scale across the full 2km AOI. A fixed
-    # 0-1 scale makes tight, low-magnitude footprints (e.g. phytophthora's
-    # 25m dispersal radius topping out around 0.13) look flat/empty even
-    # though the raster has real structure -- see docs/notes/
+    # Zoom to the risk footprint. Scale the color range to that footprint's
+    # own data. Do not use a shared 0-1 scale across the full 2km AOI. A
+    # fixed 0-1 scale makes tight, low-magnitude footprints look flat and
+    # empty. Example: phytophthora's 25m dispersal radius tops out around
+    # 0.13. The raster still has real structure. See docs/notes/
     # real_site_risk_raster.md's resolution-bump verification.
     resolution_m = environment["resolution_m"]
     nonzero_rows, nonzero_cols = np.nonzero(risk)

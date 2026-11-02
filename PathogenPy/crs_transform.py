@@ -1,20 +1,21 @@
 """
-Closed-form coordinate transform for the POS tree layer, stdlib math only
-(no pyproj / arcpy -- see docs/notes/site_tree_host_inventory.md, Option B).
+Closed-form coordinate transform for the POS tree layer. It uses stdlib
+math only. It does not use pyproj or arcpy. See
+docs/notes/site_tree_host_inventory.md, Option B.
 
-Single job: NAD83(HARN) StatePlane Oregon South (FIPS 3602),
-International Feet  ->  WGS84 UTM Zone 10N, meters (EPSG:32610), the frame
-the site grids and known_cases.csv already use.
+This module has one job. It converts NAD83(HARN) StatePlane Oregon South (FIPS 3602),
+in International Feet, to WGS84 UTM Zone 10N, in meters (EPSG:32610).
+That is the frame that the site grids and known_cases.csv already use.
 
-Two legs:
-1. StatePlane -> geographic: Lambert Conformal Conic (2SP) inverse.
-2. geographic -> UTM 10N: Transverse Mercator forward (Snyder series).
+The transform has two legs:
+1. StatePlane to geographic: Lambert Conformal Conic (2SP) inverse.
+2. Geographic to UTM 10N: Transverse Mercator forward (Snyder series).
 
-GRS80 (source datum) and WGS84 (target) flattening differ at ~1e-10;
-negligible versus a municipal inventory's few-meter point accuracy, so
-one ellipsoid constant set is used for both legs.
+GRS80 (source datum) and WGS84 (target) flattening differ at ~1e-10.
+This is small compared with the few-meter point accuracy of a municipal
+inventory. So one ellipsoid constant set is used for both legs.
 
-Source CRS parameters are taken verbatim from
+The source CRS parameters are copied verbatim from
 data/POS_Trees_Master/POS_Trees_Master.prj:
 
   PROJCS["NAD_1983_HARN_StatePlane_Oregon_South_FIPS_3602_Feet_Intl",
@@ -26,7 +27,7 @@ data/POS_Trees_Master/POS_Trees_Master.prj:
     PARAMETER["Latitude_Of_Origin",41.6666666666667],
     UNIT["foot",0.3048]]
 
-This is not a general projection engine. A dataset in a different CRS gets
+This is not a general projection engine. A dataset in another CRS needs
 its own function here.
 """
 
@@ -46,7 +47,7 @@ _LCC_LAT1 = math.radians(44.0)
 _LCC_LAT2 = math.radians(42.3333333333333)
 _LCC_LAT0 = math.radians(41.6666666666667)
 _LCC_LON0 = math.radians(-120.5)
-_LCC_FE_M = 4921259.843 * _INTL_FOOT_M  # 1_500_000 m exactly
+_LCC_FE_M = 4921259.843 * _INTL_FOOT_M  # Equals 1_500_000 m exactly.
 _LCC_FN_M = 0.0
 
 
@@ -79,7 +80,7 @@ _EP2 = _E2 / (1.0 - _E2)
 
 
 def stateplane_or_south_ift_to_latlon(x_ft, y_ft):
-    """Oregon South State Plane (International feet) -> (lat_deg, lon_deg)."""
+    """Converts Oregon South State Plane (International feet) to (lat_deg, lon_deg)."""
     easting = x_ft * _INTL_FOOT_M - _LCC_FE_M
     northing = y_ft * _INTL_FOOT_M - _LCC_FN_M
 
@@ -91,7 +92,7 @@ def stateplane_or_south_ift_to_latlon(x_ft, y_ft):
     lon = theta / _LCC_N + _LCC_LON0
 
     lat = math.pi / 2.0 - 2.0 * math.atan(t)
-    for _ in range(8):  # converges well inside 8 iterations at this latitude
+    for _ in range(8):  # Converges well within 8 iterations at this latitude.
         sin_lat = _E * math.sin(lat)
         lat = math.pi / 2.0 - 2.0 * math.atan(
             t * (((1.0 - sin_lat) / (1.0 + sin_lat)) ** (_E / 2.0))
@@ -100,7 +101,7 @@ def stateplane_or_south_ift_to_latlon(x_ft, y_ft):
 
 
 def latlon_to_utm10n(lat_deg, lon_deg):
-    """(lat_deg, lon_deg) -> (x_m, y_m) in WGS84 UTM Zone 10N."""
+    """Converts (lat_deg, lon_deg) to (x_m, y_m), in WGS84 UTM Zone 10N."""
     lat = math.radians(lat_deg)
     lon = math.radians(lon_deg)
 
@@ -133,6 +134,6 @@ def latlon_to_utm10n(lat_deg, lon_deg):
 
 
 def stateplane_or_south_ift_to_utm10n(x_ft, y_ft):
-    """Oregon South State Plane (International feet) -> UTM 10N meters."""
+    """Converts Oregon South State Plane (International feet) to UTM 10N meters."""
     lat_deg, lon_deg = stateplane_or_south_ift_to_latlon(x_ft, y_ft)
     return latlon_to_utm10n(lat_deg, lon_deg)

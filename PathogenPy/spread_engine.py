@@ -10,11 +10,11 @@ together:
            * environmental_match(location)
            * stress_amplification(tree's stress_index)
 
-This is intentionally a simple, explainable first-pass model -- good
-enough for field risk-flagging and easy to defend/explain, not a
-publication-grade epidemiological model. It's a reasonable scaffold to
-replace pieces of later (e.g. swap the exponential kernel for a proper
-dispersal function fit to real outbreak data once you have it).
+This is a simple, explainable first-pass model. It is good enough for
+field risk flagging and easy to explain and defend. It is not a
+publication-grade epidemiological model. Treat it as a scaffold that
+can be replaced in parts. For example, swap the exponential kernel for
+a dispersal function fit to real outbreak data when you have that data.
 """
 
 import numpy as np
@@ -29,8 +29,9 @@ def _distance_matrix(sources_xy, targets_xy):
 
 def _bearing_matrix(sources_xy, targets_xy):
     """Compass bearing (degrees, 0=north/90=east, clockwise) from each
-    source to each target -- same shape as _distance_matrix, and the
-    convention IEM wind rose directions use (see fetch_wind_rose.py)."""
+    source to each target. It has the same shape as _distance_matrix.
+    It uses the convention of IEM wind rose directions (see
+    fetch_wind_rose.py)."""
     diff = targets_xy[:, None, :] - sources_xy[None, :, :]
     dx, dy = diff[..., 0], diff[..., 1]
     return np.degrees(np.arctan2(dx, dy)) % 360
@@ -39,19 +40,22 @@ def _bearing_matrix(sources_xy, targets_xy):
 def _dispersal_kernel(distance_m, decay_rate, max_dispersal_m, bearing_deg=None, wind_bias=None):
     """
     Exponential decay kernel, hard-capped at max_dispersal_distance.
-    Distance = 0 -> risk contribution 1.0. Beyond max_dispersal -> 0.
+    At distance 0, the risk contribution is 1.0. Beyond max_dispersal,
+    it is 0.
 
-    When bearing_deg (source->target compass bearing, from _bearing_matrix)
-    and wind_bias (a {prevailing_direction_deg, directionality_strength}
-    dict, e.g. loaded from a site's wind_rose.json) are both given, the
-    decay rate is nudged by how aligned each target is with the downwind
-    direction: slower decay (farther reach) downwind of a source, faster
-    decay (shorter reach) upwind, blended by directionality_strength
-    between 0 (unchanged, isotropic) and 1 (full swing). This replaces the
-    plain isotropic call in that case -- see
+    When bearing_deg (source-to-target compass bearing, from
+    _bearing_matrix) and wind_bias are both given, the decay rate is
+    adjusted for each target. wind_bias is a {prevailing_direction_deg,
+    directionality_strength} dict, for example loaded from a site's
+    wind_rose.json. Targets downwind of a source decay more slowly, so
+    they reach farther. Targets upwind decay faster, so they reach less
+    far. directionality_strength sets the blend. 0 means no change
+    (isotropic). 1 means the full effect. This replaces the plain
+    isotropic call in that case. See
     docs/feature_contracts/wind_dispersal_and_soil_reweight.md Part B.
-    prevailing_direction_deg is the direction wind blows FROM (standard
-    meteorological convention, matching IEM), so downwind is +180 deg.
+    prevailing_direction_deg is the direction the wind blows FROM
+    (standard meteorological convention, matching IEM). So downwind is
+    +180 deg.
     """
     if bearing_deg is not None and wind_bias is not None:
         downwind_deg = (wind_bias["prevailing_direction_deg"] + 180) % 360
@@ -69,10 +73,10 @@ def _sample_grid_at_points(grid, resolution_m, xy, origin_x=0.0, origin_y=0.0):
     """
     Nearest-neighbor lookup of a raster value at given x,y points.
 
-    origin_x/origin_y are the real-world coordinates of the grid's row-0/col-0
-    cell (default 0,0 for the synthetic local-grid surfaces). Arrays are
-    assumed bottom-up (row 0 = origin_y), matching what
-    PathogenPy/arcpy_export/export_site_layers.py writes.
+    origin_x and origin_y are the real-world coordinates of the grid's
+    row-0 and col-0 cell. The default is 0,0, which suits the synthetic
+    local-grid surfaces. Arrays are assumed bottom-up (row 0 = origin_y).
+    This matches what PathogenPy/arcpy_export/export_site_layers.py writes.
     """
     n_rows, n_cols = grid.shape
     col = np.clip(((xy[:, 0] - origin_x) / resolution_m).astype(int), 0, n_cols - 1)
@@ -81,7 +85,7 @@ def _sample_grid_at_points(grid, resolution_m, xy, origin_x=0.0, origin_y=0.0):
 
 
 def _combine_spatial_environment(pathogen_config: dict, environment: dict, target_xy: np.ndarray):
-    """Combine multiple raster-derived suitability surfaces into one score."""
+    """Combine several raster-derived suitability surfaces into one score."""
     triggers = pathogen_config.get("spatial_weights")
     if triggers is None:
         return None
@@ -109,24 +113,24 @@ def _infection_hazard(source_xy, targets, pathogen_config, environment=None, win
     """
     Per-step infection hazard (0-1) for a set of currently-susceptible
     trees, given a set of currently-infected source points. This is the
-    core compute_risk does for a single step; it is factored out so
-    spread_simulation.simulate_spread can iterate it with a growing
-    source set without duplicating the math (see docs/feature_contracts/
-    temporal_spread_per_tree.md).
+    single-step core of compute_risk. It is a separate function so
+    spread_simulation.simulate_spread can run it again with a growing
+    source set. The math is not repeated. See
+    docs/feature_contracts/temporal_spread_per_tree.md.
 
     Parameters
     ----------
     source_xy : (n_sources, 2) array of infected-tree coordinates.
-    targets : DataFrame of the susceptible trees -- needs x, y, species,
-        stress_index. Its row order defines the output order.
+    targets : DataFrame of the susceptible trees. It needs x, y, species,
+        and stress_index. Its row order defines the output order.
     pathogen_config, environment, wind : as compute_risk.
 
     Returns
     -------
-    (risk, components) where risk is a 0-1 array (len == len(targets)) and
-    components is a dict of the dispersal_score / susceptibility /
-    environmental_match / stress_amplification arrays that multiplied to
-    make it.
+    (risk, components). risk is a 0-1 array (len == len(targets)).
+    components is a dict of the dispersal_score, susceptibility,
+    environmental_match, and stress_amplification arrays. These arrays
+    multiply together to make risk.
     """
     target_xy = targets[["x", "y"]].to_numpy()
 
@@ -141,8 +145,9 @@ def _infection_hazard(source_xy, targets, pathogen_config, environment=None, win
         bearing_deg=bearing,
         wind_bias=wind,
     )
-    # risk from nearest/strongest source, not sum of all sources
-    # (avoids unrealistic stacking when many sources are far away)
+    # Risk comes from the nearest or strongest source, not from the sum of
+    # all sources. This avoids unrealistic stacking when many sources are
+    # far away.
     dispersal_score = kernel.max(axis=1)
 
     # host susceptibility
@@ -170,8 +175,8 @@ def _infection_hazard(source_xy, targets, pathogen_config, environment=None, win
     if env_match is None:
         env_match = np.full(len(targets), 0.5)
 
-    # stress amplification -- scales risk up for stressed trees,
-    # capped so it can't blow past 1.0 downstream
+    # stress amplification. This scales risk up for stressed trees.
+    # The result is capped so it does not pass 1.0 downstream.
     stress_amp = 1 + (pathogen_config["stress_multiplier"] - 1) * targets["stress_index"].to_numpy()
 
     risk = np.clip(dispersal_score * susceptibility * env_match * stress_amp, 0, 1)
@@ -192,18 +197,18 @@ def compute_risk(inventory: pd.DataFrame, pathogen_config: dict, environment: di
     inventory : DataFrame with columns x, y, species, stress_index, infected
     pathogen_config : one of the dicts from pathogens.PATHOGENS
     environment : optional dict from synthetic_data.generate_environment_grid
-        (or real raster data in the same shape) -- if omitted, environmental
+        (or real raster data in the same shape). If omitted, environmental
         match defaults to a neutral 0.5 for every tree.
     wind : optional {prevailing_direction_deg, directionality_strength} dict
-        (e.g. loaded from a site's wind_rose.json). Only applied when
-        pathogen_config["transmission_mode"] is "airborne" or "vector" --
-        see _dispersal_kernel and docs/feature_contracts/
+        (e.g. loaded from a site's wind_rose.json). It is only applied when
+        pathogen_config["transmission_mode"] is "airborne" or "vector".
+        See _dispersal_kernel and docs/feature_contracts/
         wind_dispersal_and_soil_reweight.md Part B.
 
     Returns
     -------
-    DataFrame: original inventory + a 'risk_score' column (0 for already-
-    infected trees, since they're not "at risk" -- they're the source).
+    DataFrame: the original inventory plus a 'risk_score' column. Trees that
+    are already infected get 0. They are the source, not an at-risk tree.
     """
     df = inventory.copy()
     sources = df[df["infected"]]
@@ -240,32 +245,33 @@ def compute_risk_raster(pathogen_config: dict, environment: dict, source_xy: np.
 
     risk_cell = dispersal_kernel(distance to nearest source) * environmental_match(cell)
 
-    There's no per-cell species or stress_index, so unlike compute_risk this
-    intentionally leaves out host susceptibility and stress amplification --
-    see docs/feature_contracts/real_site_risk_raster.md's Non-goals. This
-    answers "how favorable is this location for spread from the known
-    source(s)," not "which specific trees are at risk."
+    There is no per-cell species or stress_index. So, unlike compute_risk,
+    this function leaves out host susceptibility and stress amplification
+    on purpose. See docs/feature_contracts/real_site_risk_raster.md's
+    Non-goals. This answers "how favorable is this location for spread from
+    the known source(s)," not "which specific trees are at risk."
 
     Parameters
     ----------
-    pathogen_config : one of the dicts from pathogens.PATHOGENS. Must define
-        spatial_weights naming at least one surface present in environment.
+    pathogen_config : one of the dicts from pathogens.PATHOGENS. It must
+        define spatial_weights naming at least one surface present in
+        environment.
     environment : dict from spatial_inputs.load_site_grid (or
-        synthetic_data.generate_environment_grid) -- must include
+        synthetic_data.generate_environment_grid). It must include
         resolution_m and at least one of pathogen_config["spatial_weights"]'s
-        surfaces, to define the raster's shape.
+        surfaces. Those surfaces define the raster's shape.
     source_xy : (n_sources, 2) array of known infection point coordinates,
         in the same real-world units as environment's origin_x/origin_y.
     wind : optional {prevailing_direction_deg, directionality_strength} dict
-        (e.g. loaded from a site's wind_rose.json). Only applied when
-        pathogen_config["transmission_mode"] is "airborne" or "vector" --
-        see _dispersal_kernel and docs/feature_contracts/
+        (e.g. loaded from a site's wind_rose.json). It is only applied when
+        pathogen_config["transmission_mode"] is "airborne" or "vector".
+        See _dispersal_kernel and docs/feature_contracts/
         wind_dispersal_and_soil_reweight.md Part B.
 
     Returns
     -------
-    2D numpy array, shape (n_rows, n_cols), bottom-up (row 0 = origin_y) --
-    same row convention as the arrays load_site_grid reads.
+    2D numpy array, shape (n_rows, n_cols), bottom-up (row 0 = origin_y).
+    It uses the same row convention as the arrays that load_site_grid reads.
     """
     spatial_weights = pathogen_config.get("spatial_weights", {})
     reference_surface = next(

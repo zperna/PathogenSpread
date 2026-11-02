@@ -1,14 +1,14 @@
 """
-Per-tree risk over the real Oregon sites, using the POS host inventory
-(site_tree_inventory.build_host_inventory) as input to
+This script computes per-tree risk for the real Oregon sites. It uses the
+POS host inventory (site_tree_inventory.build_host_inventory) as input to
 spread_engine.compute_risk.
 
-This is the per-tree companion to run_real_site_risk_raster.py: the raster
-script answers "how favorable is this location for spread," this one
+This is the per-tree companion to run_real_site_risk_raster.py. The raster
+script answers "how favorable is this location for spread." This script
 answers "which specific host trees near the known cases are most at risk,"
 ranked. See docs/feature_contracts/site_tree_host_inventory.md.
 
-Run with the plain project .venv -- no arcpy required. Requires
+Run with the plain project .venv. arcpy is not required. Requires
 data/POS_Trees_Master/ and each data/<site_name>/ to exist.
 """
 
@@ -26,8 +26,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_ROOT = PROJECT_ROOT / "data"
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 
-# pathogen key -> (data/<site_name>/, output basename), mirrors
-# run_real_site_risk_raster.py's RUNS
+# pathogen key -> (data/<site_name>/, output basename). Mirrors
+# RUNS in run_real_site_risk_raster.py.
 RUNS = [
     ("red_ring_rot", "site", "red_ring_rot_site_tree_risk"),
     ("phytophthora", "site_phytophthora", "phytophthora_site_tree_risk"),
@@ -42,9 +42,10 @@ REPORT_COLUMNS = [
 
 
 def load_wind(site_data_dir):
-    """Same wind-rose load as run_real_site_risk_raster.py -- the engine
-    gates this to airborne/vector transmission_mode, so it is a no-op for
-    a soil-borne pathogen even though the file exists for every site."""
+    """Loads the wind rose the same way run_real_site_risk_raster.py does.
+    The engine only uses it for airborne or vector transmission_mode. For
+    a soil-borne pathogen it has no effect, even though the file exists for
+    every site."""
     wind_rose_path = site_data_dir / "wind_rose.json"
     if not wind_rose_path.exists():
         return None

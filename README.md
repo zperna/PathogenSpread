@@ -1,53 +1,65 @@
 # Pathogen Spread Risk Prototype
 
-An explainable, extensible risk-flagging system for tree health and invasive
-pathogen spread. Pathogen behavior (dispersal kernel, host susceptibility,
-environmental triggers) lives entirely in config dictionaries, not
-hard-coded logic, so new pathogens or data sources can be added without
-touching the core engine.
+This project flags risk for tree health and invasive pathogen spread. The
+system is explainable and extensible. Pathogen behavior (dispersal kernel,
+host susceptibility, environmental triggers) is stored in config
+dictionaries. It is not hard-coded. You can add new pathogens or data
+sources without changes to the core engine.
 
-**Status:** prototype scaffold. Scoring, spatial weights, terrain/soil
-suitability mappings, and spread-simulation thresholds are documented
-domain-judgment placeholders, not a validated predictive model -- see the
-caveats in `pathogens.py` and `docs/notes/`.
+**Status:** prototype scaffold. This is not a validated predictive model.
+The scores, spatial weights, terrain and soil suitability mappings, and
+spread-simulation thresholds are domain-judgment placeholders. Each one is
+documented. Read the caveats in `pathogens.py` and `docs/notes/`.
 
 ## How it works
 
-`PathogenPy/spread_engine.py` is a generic spread-risk engine that takes:
-- a tree inventory (pandas DataFrame) **or** a raster grid of environmental
-  surfaces,
-- a pathogen config from `PathogenPy/pathogens.py` (dispersal kernel, host
-  susceptibility, environmental triggers, spatial weights, spread-step
-  threshold),
-- optional environmental surfaces (land cover, soil drainage and water
-  attributes, terrain, wetness, wind exposure),
-- and optional site wind data (prevailing direction + directionality
-  strength), used only for airborne/vector-transmitted pathogens,
+`PathogenPy/spread_engine.py` is a generic spread-risk engine. It takes
+these inputs:
+- A tree inventory (pandas DataFrame) **or** a raster grid of environmental
+  surfaces.
+- A pathogen config from `PathogenPy/pathogens.py`. The config holds the
+  dispersal kernel, host susceptibility, environmental triggers, spatial
+  weights, and spread-step threshold.
+- Optional environmental surfaces: land cover, soil drainage and water
+  attributes, terrain, wetness, and wind exposure.
+- Optional site wind data (prevailing direction and directionality
+  strength). The engine uses it only for airborne or vector-transmitted
+  pathogens.
 
-and produces an explainable 0-1 risk score per tree (`compute_risk`) or per
-grid cell (`compute_risk_raster`). Everything is simple, inspectable math
-(distance-decay kernels stretched along the prevailing wind, weighted
-environmental match) -- no opaque models.
+The output is an explainable 0-1 risk score. `compute_risk` gives one score
+per tree. `compute_risk_raster` gives one score per grid cell. The math is
+simple and you can inspect it. It uses distance-decay kernels stretched
+along the prevailing wind and a weighted environmental match. It uses no
+opaque models.
 
-On top of the engine:
-- **Per-tree real-site risk** builds a host inventory from the City of
-  Eugene POS tree layer (stdlib shapefile reader, closed-form CRS
-  transform, species crosswalk) and ranks host trees near the known cases.
-- **Spread simulation** (`spread_simulation.py`) iterates the same per-tree
-  hazard over generations with a growing infected set. It is deterministic
-  and illustrative -- a what-if trajectory, not a forecast.
-- **Tree point export** writes the per-tree results and known cases as
-  point shapefiles for direct use in ArcGIS Pro.
+These features use the engine:
+- **Per-tree real-site risk.** This builds a host inventory from the City
+  of Eugene POS tree layer. It uses a stdlib shapefile reader, a
+  closed-form CRS transform, and a species crosswalk. It then ranks host
+  trees near the known cases.
+- **Spread simulation** (`spread_simulation.py`). This repeats the same
+  per-tree hazard over generations. The infected set grows each
+  generation. The result is deterministic and illustrative. It is a what-if
+  trajectory, not a forecast.
+- **Tree point export.** This writes the per-tree results and known cases
+  as point shapefiles. You can use them directly in ArcGIS Pro.
 
-Configured pathogens: `red_ring_rot`, `phytophthora`, `anthracnose` (each
-with a real Oregon site), and `emerald_ash_borer` (config only, no real
-site -- no confirmed case exists).
+Configured pathogens:
+- `red_ring_rot`, `phytophthora`, and `anthracnose`. Each has a real Oregon
+  site.
+- `emerald_ash_borer`. Config only. It has no real site because no
+  confirmed case exists.
 
-The real-site pipeline's output GeoTIFF loaded back into `PathogenProject.aprx`,
-showing the Red Ring Rot risk raster (dark hotspot, peak at the known case)
-over the real parcel:
+The image below shows the real-site pipeline output in
+`PathogenProject.aprx`. The GeoTIFF is the Red Ring Rot risk raster over the
+real parcel. The dark hotspot has its peak at the known case.
 
 ![Red Ring Rot site risk raster in ArcGIS Pro](docs/images/red_ring_rot_risk_pro_preview.png)
+
+The image below shows a site risk raster (magenta) in ArcGIS Pro over
+aerial imagery. The points are POS tree locations.
+
+![Site risk raster with POS tree points in ArcGIS Pro](docs/images/Screenshot%202026-09-11%20115139.png)
 
 ## Repository layout
 
@@ -90,7 +102,7 @@ PathogenProject/         ArcGIS Pro project: .gdb sources, NLCD raster, .aprx
 
 ## Setup
 
-The engine (`PathogenPy/`, excluding `arcpy_export/`) only needs a plain
+The engine (`PathogenPy/`, but not `arcpy_export/`) needs only a plain
 Python environment:
 
 ```
@@ -99,16 +111,16 @@ python -m venv .venv
 pip install numpy pandas matplotlib scipy pytest
 ```
 
-`PathogenPy/arcpy_export/*.py` is intentionally split out because it needs
-**ArcGIS Pro's own Python**, not this venv:
+`PathogenPy/arcpy_export/*.py` is kept separate on purpose. These scripts
+need **ArcGIS Pro's own Python**, not this venv:
 
 ```
 "C:\Program Files\ArcGIS\Pro\bin\Python\envs\arcgispro-py3\python.exe" export_site_layers.py
 ```
 
-The plain `.venv` never imports arcpy/rasterio/geopandas -- it only reads
-the flat files that `export_site_layers.py` writes to `data/`. Shapefile
-I/O and the CRS transform are stdlib-only for the same reason.
+The plain `.venv` never imports arcpy, rasterio, or geopandas. It reads only
+the flat files that `export_site_layers.py` writes to `data/`. For the same
+reason, shapefile I/O and the CRS transform use only the standard library.
 
 ## Running it
 
@@ -132,12 +144,15 @@ python PathogenPy\run_real_site_risk_raster.py
 # 4. Convert results back to georeferenced GeoTIFFs (ArcGIS Pro Python)
 "C:\Program Files\ArcGIS\Pro\bin\Python\envs\arcgispro-py3\python.exe" PathogenPy\arcpy_export\import_risk_raster.py
 ```
-Re-run step 1 whenever the source `.gdb` data changes; no code changes are
-needed elsewhere. Step 2 only needs re-running if a site's AOI moves.
-`data/` is tracked, so steps 1-2 can be skipped on a fresh clone. Load the
-resulting `outputs/*.tif` into `PathogenProject.aprx` to view (add layers +
-save from the Pro UI -- scripting `aprx.save()` headlessly hangs, see
-`docs/notes/`).
+
+Notes on the raster pipeline:
+1. Run step 1 again when the source `.gdb` data changes. No other code
+   changes are needed.
+2. Run step 2 again only if a site's AOI moves.
+3. `data/` is tracked in git. On a fresh clone you can skip steps 1-2.
+4. To view the results, load `outputs/*.tif` into `PathogenProject.aprx`.
+   Add the layers and save from the Pro UI. Do not script `aprx.save()`
+   headlessly. It hangs (see `docs/notes/`).
 
 **Real-site per-tree pipeline** (plain .venv, uses tracked `data/` only):
 ```
@@ -145,52 +160,57 @@ python PathogenPy\run_real_site_tree_risk.py     # ranked per-tree risk CSV + pr
 python PathogenPy\run_real_site_tree_spread.py   # spread CSV, epidemic curve, frames
 python PathogenPy\export_tree_points.py          # CSVs -> outputs/gis/*.shp
 ```
-Run `export_tree_points.py` after the two run scripts; it only converts
-their CSVs. Add the `outputs/gis/` shapefiles to `PathogenProject.aprx`
-and symbolize by `RISK_SCORE` (risk layers) or `INF_STEP` (spread layers).
+
+Run `export_tree_points.py` after the two run scripts. It only converts
+their CSVs. Then add the `outputs/gis/` shapefiles to
+`PathogenProject.aprx`. Symbolize risk layers by `RISK_SCORE`. Symbolize
+spread layers by `INF_STEP`.
 
 **Tests:**
 ```
 pytest tests/
 ```
-Current tests cover the grove scenario and `spatial_inputs.py` only. The
-per-tree inventory, spread simulation, and shapefile/CRS modules do not
-have tests yet.
+
+The current tests cover only the grove scenario and `spatial_inputs.py`.
+These modules have no tests yet: the per-tree inventory, the spread
+simulation, and the shapefile and CRS modules.
 
 ## Contract-first artifact chain
 
-This project treats every feature as a chain of artifacts rather than just
-code (see `CLAUDE.md` and `docs/artifact_chain.md`):
+Each feature is a chain of artifacts, not only code. See `CLAUDE.md` and
+`docs/artifact_chain.md`.
 
-1. **Contract** (`docs/feature_contracts/<feature>.md`) -- problem, scope,
-   inputs/outputs, success criteria.
-2. **Design note** (`docs/notes/<feature>.md`) -- approach, assumptions,
+1. **Contract** (`docs/feature_contracts/<feature>.md`). Problem, scope,
+   inputs and outputs, success criteria.
+2. **Design note** (`docs/notes/<feature>.md`). Approach, assumptions,
    verification results.
-3. **Implementation** -- the code.
-4. **Verification** -- run it, capture the result.
+3. **Implementation.** The code.
+4. **Verification.** Run the code and record the result.
 5. **Summary** (`docs/summaries/<feature>.md`, or the end of the design
-   note) -- what changed, what's next.
+   note). What changed and what comes next.
 
-`docs/project_contract.md` has the overall product goal and planned
-evolution. Read `docs/feature_contracts/` and `docs/notes/` for the reasoning
-behind specific design choices (e.g. why raster risk mode excludes host
-susceptibility, why spatial weights differ per transmission mode, why tree
-results export as points instead of a raster).
+`docs/project_contract.md` gives the overall product goal and planned
+changes. `docs/feature_contracts/` and `docs/notes/` explain specific
+design choices. Examples:
+- Why raster risk mode excludes host susceptibility.
+- Why spatial weights differ per transmission mode.
+- Why tree results export as points and not as a raster.
 
 ## Known limitations
 
 - Each real site has only one or two confirmed cases (Red Ring Rot: 1,
-  Phytophthora: 1, Anthracnose: 2) -- this is not a fitted/calibrated model.
-- Soil drainage-class, slope/aspect, and moisture/temperature suitability
-  scores are ordinal domain-judgment placeholders, not sourced from
-  pathology literature.
-- No real moisture/temperature climate layers are wired in yet.
-- Wind comes from one nearest ASOS/AWOS station per site. Willamette Valley
-  winds are seasonally bimodal, so a single prevailing direction is a
+  Phytophthora: 1, Anthracnose: 2). The model is not fitted or calibrated.
+- The suitability scores for soil drainage class, slope and aspect, and
+  moisture and temperature are ordinal placeholders. They come from domain
+  judgment, not from pathology literature.
+- No real moisture or temperature climate layers are connected yet.
+- Wind data comes from one nearest ASOS/AWOS station per site. Willamette
+  Valley winds are seasonally bimodal. A single prevailing direction is a
   simplification (see `docs/notes/real_wind_data.md`).
-- Raster risk mode has no per-cell species/stress data, so host
-  susceptibility and stress amplification are intentionally left out of it.
-- The POS tree layer has no health field, so per-tree `stress_index` is a
-  constant default. Species mapping is mostly genus-level.
-- Spread simulation generations are abstract dispersal cycles, not seasons
-  or years. `promotion_threshold` is an uncalibrated knob.
+- Raster risk mode has no per-cell species or stress data. For this
+  reason, it leaves out host susceptibility and stress amplification on
+  purpose.
+- The POS tree layer has no health field. Per-tree `stress_index` is a
+  constant default. Species mapping is mostly at genus level.
+- Spread simulation generations are abstract dispersal cycles. They are
+  not seasons or years. `promotion_threshold` is not calibrated.

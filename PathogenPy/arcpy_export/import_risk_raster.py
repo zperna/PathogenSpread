@@ -1,11 +1,11 @@
 """
-Converts the engine's computed risk rasters (plain numpy arrays +
-<basename>_grid_meta.json, written by run_real_site_risk_raster.py in the
-arcpy-free venv) back into real georeferenced GeoTIFFs that can be loaded
-into PathogenProject.aprx.
+Converts the engine's computed risk rasters into real georeferenced
+GeoTIFFs. The inputs are plain numpy arrays plus <basename>_grid_meta.json.
+run_real_site_risk_raster.py writes them in the arcpy-free venv. The
+GeoTIFFs can then be loaded into PathogenProject.aprx.
 
-Run this under ArcGIS Pro's Python, after run_real_site_risk_raster.py has
-produced the outputs/*.npy files:
+Run this with ArcGIS Pro's Python. Run it after run_real_site_risk_raster.py
+has produced the outputs/*.npy files:
 
     "C:\\Program Files\\ArcGIS\\Pro\\bin\\Python\\envs\\arcgispro-py3\\python.exe" ^
         import_risk_raster.py
@@ -37,8 +37,9 @@ def import_one(output_basename):
         meta = json.load(f)
 
     risk = np.load(risk_path).astype(np.float32)
-    # engine arrays are bottom-up (row 0 = origin_y); NumPyArrayToRaster
-    # expects top-down (row 0 = north), matching RasterToNumPyArray.
+    # Engine arrays are bottom-up (row 0 = origin_y). NumPyArrayToRaster
+    # expects top-down (row 0 = north). RasterToNumPyArray also uses
+    # top-down order.
     risk_top_down = np.flipud(risk)
 
     lower_left = arcpy.Point(meta["origin_x"], meta["origin_y"])

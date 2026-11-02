@@ -1,92 +1,55 @@
 # Feature contract: Richer soil water attributes for phytophthora suitability
 
 ## Problem
-The current soil suitability surface (`spatial_inputs.DRAINAGE_CLASS_SCORES`)
-is a single ordinal ramp over `muaggatt.drclassdcd`'s 7 dominant-drainage
-classes, with the 7 numeric scores chosen by domain judgment, not measured
-data. It's the only soil signal feeding phytophthora's `spatial_weights`
-(currently weighted 0.55, the largest single weight of any surface for any
-pathogen -- see `pathogens.py`), so its placeholder-ness carries a lot of
-the model's real weight.
+The current soil suitability surface (`spatial_inputs.DRAINAGE_CLASS_SCORES`) is a single ordinal ramp. It covers the 7 dominant-drainage classes in `muaggatt.drclassdcd`. Domain judgment chose the 7 numeric scores. They are not measured data.
 
-`gNATSGO_OR.gdb/muaggatt` (already joined once for `drclassdcd`) carries
-several more directly water-relevant fields that aren't being used:
-`hydgrpdcd` (hydrologic soil group, A-D, a standard runoff/infiltration
-rating), `wtdepannmin` (annual minimum water table depth, inches),
-`wtdepaprjunmin` (April-June minimum water table depth -- the wet-season
-window relevant to zoospore activity), `flodfreqdcd`/`pondfreqprs` (flood/
-ponding frequency), and `drclasswettest` (wettest drainage class within the
-map unit, vs. just the dominant one).
+This surface is the only soil signal that feeds phytophthora's `spatial_weights`. Its weight is 0.55. That is the largest single weight of any surface for any pathogen (see `pathogens.py`). So its placeholder status carries much of the model's real weight.
 
-Confirmed via a one-off diagnostic query before committing to this: both
-site AOIs (`RedRingRot`, `Phytophthora`) span 17 distinct map units each,
-with real variation in `hydgrpdcd` (Phytophthora's AOI spans A through D)
-and `wtdepannmin` (0-46in at RedRingRot, up to 76in at Phytophthora, mixed
-with many `None`/not-applicable cells on well-drained units). This isn't a
-degenerate case where the AOI is one uniform soil unit -- there's real
-signal to add.
+`gNATSGO_OR.gdb/muaggatt` was already joined once, for `drclassdcd`. It holds several more water-relevant fields that are not used yet:
+- `hydgrpdcd`: hydrologic soil group, A-D. A standard runoff and infiltration rating.
+- `wtdepannmin`: annual minimum water table depth, in inches.
+- `wtdepaprjunmin`: April-June minimum water table depth. This is the wet-season window relevant to zoospore activity.
+- `flodfreqdcd` and `pondfreqprs`: flood and ponding frequency.
+- `drclasswettest`: the wettest drainage class within the map unit, not just the dominant one.
+
+This was confirmed with a one-off diagnostic query before the work was committed. Both site AOIs (`RedRingRot`, `Phytophthora`) span 17 distinct map units each. The data varies in two fields:
+- `hydgrpdcd`: Phytophthora's AOI spans A through D.
+- `wtdepannmin`: 0-46in at RedRingRot, up to 76in at Phytophthora. Many cells on well-drained units are `None` (not applicable).
+
+This is not a degenerate case where the AOI is one uniform soil unit. There is real signal to add.
 
 ## Goal
-Replace the single-field ordinal soil score with a combination of several
-real gNATSGO water/drainage attributes, so the soil suitability surface
-rests on more than one guessed ramp, without pretending the result is a
-validated model -- it's still domain-judgment combination logic, just of
-real inputs instead of one.
+Replace the single-field ordinal soil score with a combination of several real gNATSGO water and drainage attributes. The soil suitability surface then rests on more than one guessed ramp.
+
+The result is not presented as validated. It is still domain-judgment combination logic. The difference is that it uses several real inputs, not one.
 
 ## Scope
-- Export two additional soil surfaces from `gNATSGO_OR.gdb/muaggatt`
-  alongside the existing `drclassdcd`-derived one, joined in the same pass:
-  - `hydgrpdcd` -> a small ordinal code (A-D; dual ratings like `"A/D"`
-    resolve to the second/undrained letter per NRCS convention, since that
-    reflects natural, undrained site conditions).
-  - `wtdepannmin` -> passed through numerically (inches). `NULL` (no water
-    table within the reported depth) is filled with a sentinel that reads
-    as "deep/dry" after normalization, not silently treated as 0 (which
-    would mean "water table at the surface" -- the opposite meaning).
-- Combine `soil_drainage` (existing), the new hydrologic-group score, and
-  the new water-table-depth score into one `soil` suitability surface via
-  a simple unweighted average -- explainable, no new tunable weights
-  introduced in this pass.
-- Re-run the full pipeline (export -> compute -> import) for both sites and
-  confirm the resulting rasters still make sense.
+- Export two more soil surfaces from `gNATSGO_OR.gdb/muaggatt`. Join them in the same pass as the existing `drclassdcd` surface.
+  - `hydgrpdcd` becomes a small ordinal code (A-D). Dual ratings such as `"A/D"` resolve to the second, undrained letter. This follows NRCS convention, because it reflects natural, undrained site conditions.
+  - `wtdepannmin` is passed through as numbers (inches). `NULL` means no water table within the reported depth. It is filled with a sentinel that reads as "deep/dry" after normalization. It is not treated as 0. A value of 0 would mean "water table at the surface," which is the opposite meaning.
+- Combine three inputs into one `soil` suitability surface: `soil_drainage` (existing), the new hydrologic-group score, and the new water-table-depth score. Use a simple unweighted average. This is explainable. This pass adds no new tunable weights.
+- Re-run the full pipeline (export, compute, import) for both sites. Confirm that the rasters still make sense.
 
 ## Non-goals
-- `wtdepaprjunmin`, `flodfreqdcd`, `pondfreqprs`, `drclasswettest`,
-  `aws0100wta` are documented candidates for a future pass, not included
-  here -- keeping this round to two additions so the combination logic
-  stays inspectable.
-- No claim that the combined score is validated -- same caveat as the
-  drainage-class score it's extending, now spread across three real inputs
-  instead of one.
-- Terrain/topographic-wetness-index rework (the other half of the earlier
-  discussion) is out of scope for this contract -- tracked separately.
-- Doesn't touch `red_ring_rot` -- it currently has no `soil` weight
-  (dropped per `docs/feature_contracts/wind_dispersal_and_soil_reweight.md`)
-  and this doesn't reintroduce one.
+- `wtdepaprjunmin`, `flodfreqdcd`, `pondfreqprs`, `drclasswettest`, and `aws0100wta` are documented candidates for a future pass. They are not part of this round. This round keeps to two additions so the combination logic stays inspectable.
+- No claim is made that the combined score is validated. It carries the same caveat as the drainage-class score it extends. The caveat now spans three real inputs, not one.
+- The terrain and topographic wetness index rework (the other half of the earlier discussion) is out of scope. It is tracked separately.
+- This does not touch `red_ring_rot`. It has no `soil` weight at present. The weight was dropped per `docs/feature_contracts/wind_dispersal_and_soil_reweight.md`. This change does not add one back.
 
 ## Inputs
-- `gNATSGO_OR.gdb/muaggatt`: `hydgrpdcd`, `wtdepannmin` (in addition to the
-  already-used `drclassdcd`).
-- `gNATSGO_OR.gdb/MapunitRaster_10m`: unchanged, already the join target.
+- `gNATSGO_OR.gdb/muaggatt`: `hydgrpdcd` and `wtdepannmin`, in addition to the already-used `drclassdcd`.
+- `gNATSGO_OR.gdb/MapunitRaster_10m`: unchanged. It remains the join target.
 
 ## Outputs
-- `data/<site>/hydro_group_code.npy` + `data/<site>/hydro_groups.json`
-  (code->label crosswalk), `data/<site>/water_table_depth_in.npy`.
-- `spatial_inputs.load_site_grid`'s `soil` surface now reflects all three
-  inputs instead of one.
-- Updated `outputs/*_site_risk.npy`/`.tif`/preview for both sites.
+- `data/<site>/hydro_group_code.npy`, `data/<site>/hydro_groups.json` (code-to-label crosswalk), and `data/<site>/water_table_depth_in.npy`.
+- The `soil` surface returned by `spatial_inputs.load_site_grid` now reflects all three inputs, not one.
+- Updated `outputs/*_site_risk.npy`, `.tif`, and preview files for both sites.
 
 ## Success criteria
-- Both sites' exports run end to end with the two new fields joined and no
-  `ValueError`/shape mismatch.
-- The combined `soil` surface visibly differs from the old
-  `drclassdcd`-only surface somewhere in each AOI (i.e. the new fields
-  aren't just duplicating the old signal) -- checked by comparing the two
-  surfaces directly, not just eyeballing the final risk raster.
-- `run_real_site_risk_raster.py` and `import_risk_raster.py` still run
-  cleanly for both pathogens.
+- Both sites' exports run end to end with the two new fields joined. There is no `ValueError` and no shape mismatch.
+- The combined `soil` surface visibly differs from the old `drclassdcd`-only surface somewhere in each AOI. In other words, the new fields do not just repeat the old signal. Check this by comparing the two surfaces directly. Do not rely on eyeballing the final risk raster.
+- `run_real_site_risk_raster.py` and `import_risk_raster.py` still run cleanly for both pathogens.
 
 ## Definition of done
 - This contract exists (done).
-- Design note, implementation, verification, and update summary follow in
-  `docs/notes/soil_water_attributes.md`.
+- The design note, implementation, verification, and update summary follow in `docs/notes/soil_water_attributes.md`.

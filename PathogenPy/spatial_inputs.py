@@ -1,11 +1,11 @@
 """Spatial input helpers for pathogen risk modeling.
 
-This module provides functions to turn raster layers into normalized
-suitability surfaces, generate synthetic stand-in surfaces for a
-proof-of-concept spatial prototype, and load the real site grid exported
-by PathogenPy/arcpy_export/export_site_layers.py (see
-docs/notes/real_site_risk_raster.md for why that export is a separate
-arcpy step rather than a dependency of this module).
+This module provides functions that turn raster layers into normalized
+suitability surfaces. It also generates synthetic stand-in surfaces for a
+proof-of-concept spatial prototype. It loads the real site grid exported by
+PathogenPy/arcpy_export/export_site_layers.py. See
+docs/notes/real_site_risk_raster.md for why that export is a separate arcpy
+step and not a dependency of this module.
 """
 
 import json
@@ -20,10 +20,10 @@ except ImportError:  # pragma: no cover
     rasterio = None
 
 
-# NLCD 2016 class codes -> suitability score. A domain-judgment placeholder,
-# same spirit as the synthetic land_cover_scores below: denser forest cover
-# is more favorable to a canopy-to-canopy airborne fungal pathogen, developed
-# and open surfaces are not.
+# NLCD 2016 class codes -> suitability score. This is a domain-judgment
+# placeholder. It uses the same idea as the synthetic land_cover_scores below.
+# Denser forest cover is more favorable to a canopy-to-canopy airborne fungal
+# pathogen. Developed and open surfaces are not.
 NLCD_SCORE_MAP = {
     11: 0.0,   # open water
     21: 0.3,   # developed, open space
@@ -43,9 +43,9 @@ NLCD_SCORE_MAP = {
 }
 
 # USDA dominant drainage class -> suitability score. Wetter classes score
-# higher, consistent with red_ring_rot's moisture_weight assumption and the
-# synthetic soil_scores placeholder it replaces. Ordinal domain judgment,
-# not a validated pathology mapping.
+# higher. This is consistent with red_ring_rot's moisture_weight assumption
+# and with the synthetic soil_scores placeholder it replaces. These are
+# ordinal domain judgments. They are not a validated pathology mapping.
 DRAINAGE_CLASS_SCORES = {
     "Excessively drained": 0.15,
     "Somewhat excessively drained": 0.25,
@@ -56,11 +56,12 @@ DRAINAGE_CLASS_SCORES = {
     "Very poorly drained": 1.00,
 }
 
-# NRCS hydrologic soil group -> suitability score, same ordinal-judgment
-# style as DRAINAGE_CLASS_SCORES: A (well-drained, low runoff/high
-# infiltration) scores low, D (poorly drained, high runoff/low infiltration)
-# scores high -- wetter/poorer infiltration = more favorable to a
-# soil-borne root pathogen. See docs/feature_contracts/soil_water_attributes.md.
+# NRCS hydrologic soil group -> suitability score. The style matches
+# DRAINAGE_CLASS_SCORES: ordinal domain judgment. A (well-drained, low
+# runoff/high infiltration) scores low. D (poorly drained, high
+# runoff/low infiltration) scores high. Wetter soil with poorer infiltration
+# is more favorable to a soil-borne root pathogen. See
+# docs/feature_contracts/soil_water_attributes.md.
 HYDRO_GROUP_SCORES = {
     "A": 0.15,
     "B": 0.40,
@@ -83,15 +84,15 @@ def normalize_surface(surface, min_value=None, max_value=None):
 
 
 def normalize_surface_ignoring_nan(surface, neutral=0.5):
-    """Per-site min-max normalize, treating NaN cells as neutral rather than
-    including them in the min/max or claiming a real value for them. NaN
-    here means DEM-reprojection NoData at the AOI edge (see
-    export_site_layers.raster_to_bottom_up_array), not missing-but-
-    meaningful data -- there's no basis to call an edge cell wet/dry or
-    exposed/sheltered, so it gets the same neutral treatment as
-    score_terrain's flat-aspect case rather than distorting the real range
-    the way a single extreme sentinel value did before this was caught
-    (see docs/notes/topographic_wetness_index.md)."""
+    """Per-site min-max normalize. Treat NaN cells as neutral. Do not include
+    them in the min/max, and do not give them a real value. NaN here means
+    DEM-reprojection NoData at the AOI edge (see
+    export_site_layers.raster_to_bottom_up_array). It is not missing-but-
+    meaningful data. An edge cell has no basis to call it wet/dry or
+    exposed/sheltered. So it gets the same neutral treatment as the
+    flat-aspect case in score_terrain. Before this was caught, a single
+    extreme sentinel value distorted the real range. See
+    docs/notes/topographic_wetness_index.md."""
     valid = np.isfinite(surface)
     scored = np.full(surface.shape, neutral, dtype=float)
     scored[valid] = normalize_surface(surface[valid])
@@ -179,17 +180,19 @@ def sample_surface_at_points(surface, area_size_m, resolution_m, xy):
 def score_terrain(slope_degrees, aspect_degrees):
     """
     Simple, documented placeholder terrain suitability (0-1) from slope and
-    aspect: moderate slope (more moisture retention than steep, well-drained
-    ground) and north-facing aspect (cooler, damper) score higher. Not a
-    validated forest pathology model -- see docs/notes/real_site_risk_raster.md.
+    aspect. Moderate slope scores higher, since it retains more moisture
+    than steep, well-drained ground. North-facing aspect scores higher
+    because it is cooler and damper. This is not a validated forest
+    pathology model. See docs/notes/real_site_risk_raster.md.
 
-    arcpy.sa.Aspect returns -1 for flat cells (slope == 0); those are treated
-    as aspect-neutral (0.5) rather than propagating -1 into the cosine math.
+    arcpy.sa.Aspect returns -1 for flat cells (slope == 0). These cells
+    are treated as aspect-neutral (0.5). The -1 is not passed into the
+    cosine math.
 
-    NaN cells (DEM reprojection NoData at the AOI edge -- see
-    export_site_layers.raster_to_bottom_up_array) get the same neutral 0.5
-    treatment: no valid slope/aspect to score, not a claim that the cell is
-    actually average.
+    NaN cells are DEM reprojection NoData at the AOI edge (see
+    export_site_layers.raster_to_bottom_up_array). They get the same neutral
+    0.5. There is no valid slope or aspect to score. This does not claim that
+    the cell is actually average.
     """
     slope_score = np.clip(1 - np.abs(slope_degrees - 15) / 30, 0.0, 1.0)
 
@@ -204,9 +207,10 @@ def score_terrain(slope_degrees, aspect_degrees):
 def load_site_grid(data_dir):
     """
     Loads the real site grid exported by
-    PathogenPy/arcpy_export/export_site_layers.py into the same environment
-    dict shape compute_risk/compute_risk_raster expect, with land_cover and
-    soil already converted from raw codes to 0-1 suitability scores.
+    PathogenPy/arcpy_export/export_site_layers.py. It builds the same
+    environment dict shape that compute_risk/compute_risk_raster expects.
+    land_cover and soil are already converted from raw codes to 0-1
+    suitability scores.
     """
     data_dir = Path(data_dir)
 
@@ -239,36 +243,37 @@ def load_site_grid(data_dir):
     hydro_score = score_categorical_surface(hydro_codes, hydro_score_by_code)
 
     # Shallower water table -> higher suitability. NoData cells were already
-    # filled with a large "deep/dry" sentinel at export time (see
-    # WATER_TABLE_DEPTH_NODATA_SENTINEL_IN in export_site_layers.py), so they
-    # land near 0 here after per-site min-max normalization.
+    # filled with a large "deep/dry" sentinel at export time. See
+    # WATER_TABLE_DEPTH_NODATA_SENTINEL_IN in export_site_layers.py. So these
+    # cells land near 0 here, after per-site min-max normalization.
     wtdepth_score = 1 - normalize_surface(wtdepth_in)
 
-    # Unweighted average of three independently-sourced water/drainage
-    # signals -- see docs/feature_contracts/soil_water_attributes.md for why
-    # no new tunable weights were introduced in this pass.
+    # Unweighted average of three independently sourced water and drainage
+    # signals. See docs/feature_contracts/soil_water_attributes.md for why no
+    # new tunable weights were added in this pass.
     soil = (drainage_score + hydro_score + wtdepth_score) / 3
 
     terrain = score_terrain(slope_degrees, aspect_degrees)
 
     # Higher TWI = more upslope water accumulation = higher suitability for
-    # a soil/root-rot pathogen -- no inversion needed, unlike water table
-    # depth. Per-site min-max normalized, same pattern as every other
+    # a soil/root-rot pathogen. No inversion is needed, unlike water table
+    # depth. Per-site min-max normalized, the same pattern as every other
     # continuous surface here. See
-    # docs/feature_contracts/topographic_wetness_index.md -- this is a
-    # distinct surface from `terrain` (which stays slope/aspect-based, used
-    # as a wind-exposure proxy by red_ring_rot), not a replacement of it.
+    # docs/feature_contracts/topographic_wetness_index.md. This is a distinct
+    # surface from `terrain`. `terrain` stays slope/aspect-based, and
+    # red_ring_rot uses it as a wind-exposure proxy. TWI does not replace
+    # `terrain`.
     #
     wetness = normalize_surface_ignoring_nan(wetness_index)
 
     # Positive TPI (elevation above local neighborhood mean) = ridge/convex
     # = more wind-exposed = higher suitability for this pathogen's wound-
-    # infection pathway -- no inversion needed, same direction logic as
-    # wetness. See docs/feature_contracts/wind_exposure_index.md -- this is
-    # a distinct surface from `terrain` (still slope/aspect-based, kept
-    # available but no longer used by any pathogen config) and from
-    # `wetness` (a different physical claim -- exposure, not water
-    # accumulation).
+    # infection pathway. No inversion is needed. The direction logic matches
+    # wetness. See docs/feature_contracts/wind_exposure_index.md. This is a
+    # distinct surface from `terrain`. `terrain` is still slope/aspect-based.
+    # It stays available, but no pathogen config uses it now. This is also
+    # distinct from `wetness`. It makes a different physical claim: exposure,
+    # not water accumulation.
     exposure = normalize_surface_ignoring_nan(exposure_index)
 
     return {

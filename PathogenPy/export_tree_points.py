@@ -1,21 +1,22 @@
 """
 Exports the existing per-tree CSVs (run_real_site_tree_risk.py,
 run_real_site_tree_spread.py) and each site's known_cases.csv as point
-shapefiles, so they can be added to PathogenProject.aprx directly and
-rendered with graduated or categorical symbology -- no interpolation,
-no raster.
+shapefiles. You can add them to PathogenProject.aprx directly. Render
+them with graduated or categorical symbology. There is no interpolation
+and no raster.
 
 See docs/feature_contracts/tree_point_export.md and
-docs/notes/tree_point_export.md for why a shapefile rather than a
-rasterized surface, and for the field-name crosswalk below. The
-known_cases.csv export was named there as a natural follow-up, not built
-until now -- lets a map show sources and ranked/spread trees together
-without reopening known_cases.csv separately.
+docs/notes/tree_point_export.md for why this uses a shapefile instead of
+a rasterized surface. They also hold the field-name crosswalk below. The
+known_cases.csv export was named there as a natural follow-up. It was
+not built until now. It lets a map show sources and ranked/spread trees
+together, without opening known_cases.csv separately.
 
-Pure format conversion: reads CSVs already written and verified
-elsewhere (by the two run scripts, or by export_site_layers.py for
-known_cases.csv), does not call compute_risk or simulate_spread itself.
-Run with the plain project .venv -- no arcpy.
+This is a pure format conversion. It reads CSVs that were already
+written and verified elsewhere. These come from the two run scripts, or
+from export_site_layers.py for known_cases.csv. It does not call
+compute_risk or simulate_spread. Run it with the plain project .venv.
+arcpy is not needed.
 """
 
 from pathlib import Path
@@ -37,7 +38,7 @@ SITE_FOR_PATHOGEN = {
 }
 
 # CSV column -> (dbf field name, dbf type, length, decimals). dBASE field
-# names are capped at 10 characters -- see docs/notes/tree_point_export.md
+# names are capped at 10 characters. See docs/notes/tree_point_export.md
 # for the full crosswalk table this mirrors.
 RISK_COLUMN_MAP = {
     "tree_id": ("TREE_ID", "C", 15, 0),
@@ -59,9 +60,9 @@ SPREAD_COLUMN_MAP = {
     "infected": ("INFECTED", "L", 1, 0),
 }
 # known_cases.csv (written by arcpy_export/export_site_layers.py) keeps
-# its source species code (e.g. PsMe, PlHi) unconverted -- compute_risk
-# never reads a source's species, so no crosswalk applies here, same as
-# noted in docs/notes/site_tree_host_inventory.md open question 4.
+# its source species code (e.g. PsMe, PlHi) unconverted. compute_risk
+# never reads a source's species. So no crosswalk applies here. The same
+# is noted in docs/notes/site_tree_host_inventory.md, open question 4.
 KNOWN_CASE_COLUMN_MAP = {
     "tree_id": ("TREE_ID", "C", 15, 0),
     "species": ("SPECIES", "C", 16, 0),

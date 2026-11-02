@@ -1,18 +1,18 @@
 """
 Minimal stdlib reader for an ESRI point shapefile plus its .dbf attribute
-table. No geopandas / fiona / pyshp -- the plain engine .venv has none of
-them and the POS tree layer is a static local file, not a live service
-(see docs/notes/site_tree_host_inventory.md, Option B).
+table. It uses no geopandas, fiona, or pyshp. The plain engine .venv has
+none of them. The POS tree layer is a static local file, not a live
+service (see docs/notes/site_tree_host_inventory.md, Option B).
 
 Scope on purpose:
-- Point shapefiles only (shape type 1). Null shapes (type 0) are skipped;
-  the POS file has one.
+- Point shapefiles only (shape type 1). Null shapes (type 0) are skipped.
+  The POS file has one.
 - dBASE III/IV .dbf: character and numeric fields read as stripped text.
   Deleted records (flag 0x2A) are skipped.
-- Field text decoded latin1 so no byte sequence can raise. The .cpg may
-  claim UTF-8, but callers here only read ASCII-safe leading tokens
-  (genus, site_typ, diameter digits), so this is the safe choice -- see
-  the note in docs/notes/site_tree_host_inventory.md.
+- Field text is decoded as latin1, so no byte sequence can raise an error.
+  The .cpg may claim UTF-8. But callers here only read ASCII-safe leading
+  tokens (genus, site_typ, diameter digits). So latin1 is the safe choice.
+  See the note in docs/notes/site_tree_host_inventory.md.
 """
 
 import struct
@@ -63,8 +63,8 @@ def _read_shp_points(shp_path):
             record_header = f.read(8)
             if len(record_header) < 8:
                 break
-            # record number + content length, both big-endian, length in
-            # 16-bit words
+            # Record number and content length. Both are big-endian.
+            # The length is in 16-bit words.
             _, content_length_words = struct.unpack(">ii", record_header)
             content = f.read(content_length_words * 2)
             shape_type = struct.unpack("<i", content[:4])[0]
@@ -77,12 +77,12 @@ def _read_shp_points(shp_path):
 
 def read_point_shapefile(path_stem):
     """
-    Reads a point shapefile + .dbf into a list of dicts, one per feature:
-    {"x": float, "y": float, **dbf_fields}.
+    Reads a point shapefile and its .dbf into a list of dicts, one per
+    feature: {"x": float, "y": float, **dbf_fields}.
 
-    path_stem is the path without extension (or with .shp -- both work).
-    Records whose geometry is a null shape are dropped, keeping .shp and
-    .dbf row alignment by skipping the matching attribute row too.
+    path_stem is the path without extension. A path with .shp also works.
+    Records with a null shape are dropped. The matching .dbf row is
+    skipped too, so the .shp and .dbf rows stay aligned.
     """
     stem = Path(path_stem)
     if stem.suffix.lower() == ".shp":

@@ -1,16 +1,16 @@
 """
-Multi-generation what-if spread over the real Oregon sites, using the POS
-host inventory as the network the infection walks along.
+Multi-generation what-if spread over the real Oregon sites. The POS host
+inventory is the network that the infection spreads along.
 
-Companion to run_real_site_tree_risk.py (single-step ranking): this one
-iterates the same per-tree hazard math with a growing infected set and
-reports a trajectory -- an epidemic curve plus a per-generation map.
+Companion to run_real_site_tree_risk.py (single-step ranking). This script
+uses the same per-tree hazard math, with a growing infected set. It reports
+a trajectory: an epidemic curve and a per-generation map.
 
-This is an illustrative scenario, not a forecast. promotion_threshold
-(per pathogen, in pathogens.py) and the generation count are knobs, not
-calibrated values. See docs/feature_contracts/temporal_spread_per_tree.md.
+This is an illustrative scenario. It is not a forecast. promotion_threshold
+(per pathogen, in pathogens.py) and the generation count are knobs. They
+are not calibrated values. See docs/feature_contracts/temporal_spread_per_tree.md.
 
-Run with the plain project .venv -- no arcpy.
+Run with the plain project .venv. No arcpy is needed.
 """
 
 import json
@@ -52,8 +52,9 @@ def load_wind(site_data_dir):
 
 
 def frame_steps(last_step):
-    """Generations to draw as panels: every one if <= MAX_FRAME_PANELS,
-    else an evenly spaced subset that always includes the last."""
+    """Generations to draw as panels. Draws every generation if there are
+    at most MAX_FRAME_PANELS. Otherwise draws an evenly spaced subset that
+    always includes the last generation."""
     steps = list(range(0, last_step + 1))
     if len(steps) <= MAX_FRAME_PANELS:
         return steps

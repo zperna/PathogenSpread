@@ -1,23 +1,24 @@
 """
 Multi-generation what-if spread simulation on a tree inventory.
 
-Iterates spread_engine._infection_hazard with a growing infected set: each
-generation, every still-susceptible tree whose single-step hazard reaches
-the pathogen's spread_step.promotion_threshold flips to infected and acts
-as a source in the next generation. Deterministic -- one reproducible
-trajectory, not a probability field.
+Iterates spread_engine._infection_hazard with a growing infected set. In
+each generation, every still-susceptible tree whose single-step hazard
+reaches the pathogen's spread_step.promotion_threshold becomes infected.
+That tree then acts as a source in the next generation. The simulation is
+deterministic. It gives one reproducible trajectory, not a probability
+field.
 
-This is an illustrative scenario, not a dated or validated forecast. A
-"generation" is an abstract dispersal cycle, not a season or a year.
-There is no calibration; the threshold and the generation count are knobs
-to sweep. See docs/feature_contracts/temporal_spread_per_tree.md.
+This is an illustrative scenario. It is not a dated or validated forecast.
+A "generation" is an abstract dispersal cycle. It is not a season or a
+year. There is no calibration. The threshold and the generation count are
+values to sweep. See docs/feature_contracts/temporal_spread_per_tree.md.
 """
 
 import pandas as pd
 
 from spread_engine import _infection_hazard
 
-STALL_CAP = 25  # hard ceiling when n_steps is not given -- see design note
+STALL_CAP = 25  # hard ceiling when n_steps is not given. See design note.
 
 
 def simulate_spread(inventory, pathogen_config, environment=None, wind=None,
@@ -27,27 +28,27 @@ def simulate_spread(inventory, pathogen_config, environment=None, wind=None,
     ----------
     inventory : DataFrame with columns x, y, species, stress_index,
         infected (the infected rows are the initial known cases).
-    pathogen_config : a dict from pathogens.PATHOGENS -- must include a
+    pathogen_config : a dict from pathogens.PATHOGENS. It must include a
         spread_step block.
     environment, wind : as spread_engine.compute_risk.
-    n_steps : generations to run. None = run until a generation infects
-        nothing, capped at STALL_CAP.
-    seed : accepted but unused -- reserved for a future stochastic mode
-        so its addition will not change this signature.
+    n_steps : generations to run. None means run until a generation infects
+        nothing. The run is capped at STALL_CAP.
+    seed : accepted but unused. It is reserved for a future stochastic mode,
+        so adding that mode will not change this signature.
 
     Returns
     -------
     (result, log)
-    result : the inventory (index reset) plus
+    result : the inventory (index reset) plus these columns.
         is_initial_case  : bool
-        infected_at_step  : 0 for initial cases, t for a tree promoted in
-            generation t, pd.NA if never promoted in the run
-        risk_at_infection : the hazard that cleared the threshold, pd.NA
-            if never promoted
-        infected           : bool, True for every tree infected by the end
+        infected_at_step  : 0 for initial cases. t for a tree promoted in
+            generation t. pd.NA if never promoted in the run.
+        risk_at_infection : the hazard that cleared the threshold. pd.NA
+            if never promoted.
+        infected           : bool. True for every tree infected by the end.
     log : list of {step, newly_infected: [tree_id, ...],
-        cumulative_infected} -- one entry per generation actually run,
-        including a final entry for the generation that stalled.
+        cumulative_infected}. There is one entry per generation actually
+        run. The log includes a final entry for the generation that stalled.
     """
     if "spread_step" not in pathogen_config:
         raise ValueError(

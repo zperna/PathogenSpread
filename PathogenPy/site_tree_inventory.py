@@ -13,7 +13,7 @@ Pipeline per site:
 5. crosswalk Tree_speci -> engine host key, drop non-hosts,
 6. append the site's known_cases.csv rows as the infected source points.
 
-Runs in the plain .venv -- no arcpy, no geopandas.
+Runs in the plain .venv. It needs no arcpy and no geopandas.
 """
 
 import json
@@ -29,8 +29,8 @@ from species_crosswalk import to_engine_species
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 POS_SHAPEFILE_STEM = PROJECT_ROOT / "data" / "POS_Trees_Master" / "POS_Trees_Master"
 
-TREE_SITE_TYPE = "T"  # vs "S" stump, "P" planting site -- see design note
-POS_STRESS_INDEX_DEFAULT = 0.0  # dataset has no health field; see design note
+TREE_SITE_TYPE = "T"  # vs "S" stump, "P" planting site. See design note.
+POS_STRESS_INDEX_DEFAULT = 0.0  # Dataset has no health field. See design note.
 
 _pos_features_cache = None
 
@@ -44,7 +44,7 @@ def _load_pos_features():
 
 
 def _parse_diameter(raw):
-    """POS `diameter` is text; blanks and '***' become None."""
+    """POS `diameter` is text. Blanks and '***' become None."""
     try:
         return float(raw)
     except (TypeError, ValueError):
@@ -66,12 +66,13 @@ def build_host_inventory(site_data_dir, write_cache=True):
     Returns a DataFrame with columns
     tree_id, x, y, species, dbh_in, stress_index, infected
 
-    - Host rows: POS "T" trees inside the AOI whose Tree_speci maps to an
-      engine host key, infected=False, stress_index=0.0.
-    - Source rows: known_cases.csv rows with infected==True, appended
-      unchanged (dbh_in null). compute_risk reads a source's position
-      only, never its species, so the PsMe/PlHi codes there need no
-      crosswalk.
+    - Host rows: POS "T" trees inside the AOI. Tree_speci must map to an
+      engine host key. These rows have infected=False and
+      stress_index=0.0.
+    - Source rows: known_cases.csv rows with infected==True. They are
+      appended unchanged, with dbh_in null. compute_risk reads only a
+      source's position, never its species. So the PsMe and PlHi codes
+      need no crosswalk.
     """
     site_data_dir = Path(site_data_dir)
     x0, y0, x1, y1 = _aoi_box(site_data_dir)

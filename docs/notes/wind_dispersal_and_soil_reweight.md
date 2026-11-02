@@ -1,109 +1,93 @@
 # Design note: Wind-dispersal kernel (Part B)
 
-Part A (spatial-weight reweighting) is covered by the earlier verification
-in the contract itself; this note is Part B only -- the anisotropic
-dispersal kernel, once real wind data existed.
+Part A (spatial-weight reweighting) is covered by the verification in the
+contract itself. This note covers Part B only. Part B is the anisotropic
+dispersal kernel. It was built once real wind data existed.
 
 ## Approach
-`spread_engine.py` previously scored dispersal purely by distance
-(`_distance_matrix` + isotropic `exp(-decay_rate * distance)` in
-`_dispersal_kernel`). Part B adds a direction-aware option without
-changing that baseline when no wind data is supplied.
+`spread_engine.py` used to score dispersal by distance alone. It used
+`_distance_matrix` and an isotropic `exp(-decay_rate * distance)` in
+`_dispersal_kernel`. Part B adds a direction-aware option. When no wind data
+is given, the baseline does not change.
 
-1. New `_bearing_matrix(sources_xy, targets_xy)`: same shape as
-   `_distance_matrix` (n_targets x n_sources), compass bearing in degrees
-   (0 = north, 90 = east, clockwise) from each source to each target. Uses
-   `atan2(dx, dy)` -- swapped argument order from the usual math
-   convention (`atan2(dy, dx)`) specifically to get compass bearings
-   instead of standard mathematical angles, since that's the convention
-   IEM's wind rose data (and `fetch_wind_rose.py`'s
-   `circular_direction_and_strength`) already uses.
-2. `_dispersal_kernel` gained optional `bearing_deg`/`wind_bias` params.
-   When both are given: `downwind_deg = (prevailing_direction_deg + 180) %
-   360` -- IEM directions are "where the wind blows FROM," so downwind
-   (the direction spores actually travel) is the opposite bearing.
-   `alignment = cos(bearing_deg - downwind_deg)` is 1.0 for a target
-   directly downwind of a source, -1.0 directly upwind, 0 for crosswind.
-   `effective_decay_rate = decay_rate * (1 - directionality_strength *
-   alignment)` -- downwind targets (alignment near 1) get a reduced decay
-   rate (slower falloff, farther reach); upwind targets (alignment near
-   -1) get an increased decay rate (faster falloff, shorter reach);
-   crosswind targets are close to the unmodified isotropic rate.
-   `directionality_strength = 0` collapses this back to the exact
-   isotropic kernel regardless of bearing -- there's no discontinuity
-   between "wind data available but weak" and "no wind data."
-3. `compute_risk` and `compute_risk_raster` both gained an optional
-   `wind=None` parameter (a `{prevailing_direction_deg,
-   directionality_strength}` dict). Each only computes `_bearing_matrix`
-   and passes it through when `wind is not None` *and*
-   `pathogen_config.get("transmission_mode") in ("airborne", "vector")` --
-   the gating this contract's Part B originally asked for, just
-   implemented as a runtime check in the engine rather than a static field
-   on the config.
-4. `run_real_site_risk_raster.py` loads `data/<site>/wind_rose.json` (if
-   present) per site and passes the two fields `compute_risk_raster` needs
-   as `wind`. It does this unconditionally for every site/pathogen pair in
-   `RUNS` -- the transmission_mode gate inside the engine is what actually
-   decides whether it's used, so this file doesn't need its own
-   per-pathogen branching.
+1. New `_bearing_matrix(sources_xy, targets_xy)`. It has the same shape as
+   `_distance_matrix` (n_targets x n_sources). It gives the compass bearing in
+   degrees from each source to each target. 0 is north, 90 is east, and the angle
+   increases clockwise. It uses `atan2(dx, dy)`. The argument order is swapped from the usual
+   math convention (`atan2(dy, dx)`). This gives compass bearings, not standard
+   math angles. IEM's wind rose data and `fetch_wind_rose.py`'s
+   `circular_direction_and_strength` both use the compass convention.
+2. `_dispersal_kernel` gained two optional parameters, `bearing_deg` and
+   `wind_bias`. When both are given:
+   - `downwind_deg = (prevailing_direction_deg + 180) % 360`. IEM directions
+     give where the wind blows *from*. The direction spores travel is the opposite bearing.
+   - `alignment = cos(bearing_deg - downwind_deg)`. It is 1.0 for a target
+     directly downwind of a source. It is -1.0 directly upwind. It is 0 for crosswind.
+   - `effective_decay_rate = decay_rate * (1 - directionality_strength * alignment)`.
+     Downwind targets (alignment near 1) get a lower decay rate. The falloff is slower and the reach is farther.
+     Upwind targets (alignment near -1) get a higher decay rate. The falloff is faster and the reach is shorter.
+     Crosswind targets stay close to the unmodified isotropic rate.
+   - `directionality_strength = 0` returns the exact isotropic kernel, for any
+     bearing. There is no jump between "wind data present but weak" and "no wind data."
+3. `compute_risk` and `compute_risk_raster` each gained an optional `wind=None`
+   parameter. It is a `{prevailing_direction_deg, directionality_strength}` dict.
+   Each one calls `_bearing_matrix` and passes the result on only when
+   `wind is not None` *and*
+   `pathogen_config.get("transmission_mode") in ("airborne", "vector")`.
+   The original contract asked for this gate. It is
+   now a runtime check in the engine, not a static field on the config.
+4. `run_real_site_risk_raster.py` loads `data/<site>/wind_rose.json` for each
+   site, if the file exists. It passes the two fields that `compute_risk_raster`
+   needs as `wind`. It does this for every site and pathogen pair in `RUNS`. It has no per-pathogen branching. The
+   `transmission_mode` gate inside the engine decides whether the wind is used.
 
 ## Why not a per-pathogen `wind_bias` config field
-The contract's original Part B sketch proposed storing
-`prevailing_direction_deg`/`directionality_strength` directly on each
-pathogen's dict in `pathogens.py`. That stopped making sense once the
-actual data source turned out to be a *site's* nearest weather station
-(`fetch_wind_rose.py` looks up a station from `grid_meta.json`'s
-centroid) -- the same pathogen run against two different sites would have
-two different prevailing winds, so the number can't correctly live on a
-pathogen-level config dict shared across sites. Keeping it as a
-call-time argument, gated by the pathogen's `transmission_mode`, gets the
-same "pathogen biology decides whether wind applies" behavior the
-contract wanted, without a config field that would only ever be correct
-for one site at a time.
+The contract's original Part B sketch stored `prevailing_direction_deg` and
+`directionality_strength` directly on each pathogen's dict in `pathogens.py`.
+That stopped making sense. The real data source is the nearest weather station
+for each *site*. `fetch_wind_rose.py` finds that station from the centroid in
+`grid_meta.json`. The same pathogen run at two sites would have two different
+prevailing winds. A pathogen-level config dict is shared across sites, so the number cannot live there correctly.
+A call-time argument, gated by the pathogen's `transmission_mode`, gives the behavior the contract wanted. Pathogen biology decides whether
+wind applies. It avoids a config field that would be correct for only one site at a time.
 
 ## Assumptions
-- Cosine-blended decay rate (rather than, say, an elliptical kernel or a
-  von Mises-weighted distance) is a deliberately simple, explainable first
-  pass, consistent with this whole engine's stated design principle --
-  not fit against any real spore-dispersal or disease-spread-rate data.
-- Uses the wind rose's single all-season circular mean as-is. Both current
-  sites sit in the Willamette Valley, which has a documented winter/summer
-  bimodal wind pattern (see `docs/notes/real_wind_data.md`) that an
-  all-season mean partially cancels out. This means
-  `directionality_strength` understates how directional the wind actually
-  is in any *given season* -- treated here as an accepted simplification
-  for a prototype, not silently ignored, but a seasonal split (e.g.
-  separate wind roses per season, blended by which season a scenario is
-  modeling) would be a more faithful next step before leaning on this for
-  anything beyond illustrative risk mapping.
-- No new dependency: `_bearing_matrix` is plain NumPy, same style as
+- The cosine-blended decay rate is a deliberately simple first pass. It was
+  chosen over an elliptical kernel or a von Mises-weighted distance. It fits
+  the engine's stated design principle of simple, explainable math. It was not
+  fit against any real spore-dispersal or disease-spread data.
+- The kernel uses the wind rose's single all-season circular mean as is. Both
+  current sites are in the Willamette Valley. The valley has a documented winter
+  and summer bimodal wind pattern (see `docs/notes/real_wind_data.md`). An
+  all-season mean partly cancels that pattern. So `directionality_strength`
+  understates how directional the wind is in any given season. This is accepted
+  as a simplification for a prototype. It is not ignored. A seasonal split would be a more faithful next step. For example, separate wind roses per season,
+  blended by the season a scenario models. That step should come before the kernel is used for more than illustrative risk maps.
+- No new dependency. `_bearing_matrix` uses plain NumPy, in the same style as
   `_distance_matrix` next to it.
 
 ## Verification
-See "Verification (Part B, 2026-09-04)" in
-`docs/feature_contracts/wind_dispersal_and_soil_reweight.md` for the full
-numeric results (downwind/upwind asymmetry, `transmission_mode` gating
-confirmed as a true no-op for `phytophthora`, and regression checks
-against `run_prototype.py`/`run_red_ring_rot_grove.py`). Summary: the
-kernel change is real (rasters differ with vs. without wind), correctly
-directional (downwind risk reaches farther than upwind, ~20x at 14 cells
-out for `red_ring_rot`), correctly gated (zero effect on a soil-borne
-pathogen even when wind data is passed in), and non-breaking (every
-existing call site that doesn't pass `wind` behaves exactly as before).
+The full numeric results are in "Verification (Part B, 2026-09-04)" in
+`docs/feature_contracts/wind_dispersal_and_soil_reweight.md`. The
+downwind and upwind asymmetry is there. So is the `transmission_mode` gate, confirmed as a true no-op
+for `phytophthora`. The regression checks against `run_prototype.py` and `run_red_ring_rot_grove.py` are there too.
+In short:
+- The kernel change is real. Rasters differ with and without wind.
+- It is directional. Downwind risk reaches farther than upwind risk. For
+  `red_ring_rot`, the ratio is about 20x at 14 cells out.
+- It is gated correctly. It has zero effect on a soil-borne pathogen, even when wind data is passed in.
+- It does not break anything. Every existing call that does not pass `wind` behaves as before.
 
 ## Update summary
-- `spread_engine.py`: `_bearing_matrix` added; `_dispersal_kernel`,
-  `compute_risk`, `compute_risk_raster` extended with optional
-  `bearing_deg`/`wind_bias`/`wind` params, gated by `transmission_mode`.
-- `run_real_site_risk_raster.py`: loads each site's `wind_rose.json` (when
-  present) and passes it through to `compute_risk_raster`.
-- `pathogens.py`: unchanged -- no `wind_bias` field added, per the
-  deviation explained above.
-- Contract's Part B section, Success criteria, Non-goals, and Definition
-  of done all updated to reflect completion; this note added as its
-  companion design note.
-- Remaining for next iteration: the seasonal-bimodal-wind caveat above is
-  still unaddressed (no seasonal wind roses exist yet); `anthracnose` and
-  `emerald_ash_borer` don't currently run against any real site raster, so
-  this kernel is unexercised for them even though both are wind/vector
-  transmission modes the engine gate would allow.
+- `spread_engine.py`: added `_bearing_matrix`. Extended `_dispersal_kernel`,
+  `compute_risk`, and `compute_risk_raster` with optional `bearing_deg`,
+  `wind_bias`, and `wind` parameters. The `transmission_mode` gate controls them.
+- `run_real_site_risk_raster.py`: loads each site's `wind_rose.json` when it
+  is present. It passes the data to `compute_risk_raster`.
+- `pathogens.py`: unchanged. No `wind_bias` field was added, per the deviation explained above.
+- The contract's Part B section, Success criteria, Non-goals, and Definition
+  of done were all updated to show completion. This note was added as its companion design note.
+- Remaining for the next iteration. The seasonal bimodal wind caveat above is
+  still open. No seasonal wind roses exist yet. `anthracnose` and
+  `emerald_ash_borer` do not run against any real site raster. So this kernel is
+  untested for them. Both are wind or vector transmission modes, which the engine gate would allow.

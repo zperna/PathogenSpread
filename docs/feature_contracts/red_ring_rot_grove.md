@@ -1,19 +1,19 @@
 # Feature contract: Douglas-fir grove red ring rot scenario
 
 ## Problem
-We need a first site-specific prototype that reflects the kind of setting we actually have: a Douglas-fir grove where red ring rot is the relevant pathogen.
+We need a first site-specific prototype. It must match the setting we have: a Douglas-fir grove where red ring rot is the relevant pathogen.
 
 ## Goal
-Create a focused prototype scenario that uses the existing engine with a Douglas-fir-heavy inventory and the red ring rot pathogen configuration, so the project can produce interpretable risk outputs for a real-world-like setting.
+Create a focused prototype scenario. It uses the existing engine, a Douglas-fir-heavy inventory, and the red ring rot pathogen configuration. The project can then produce interpretable risk outputs for a real-world-like setting.
 
 ## Scope
 - Use the existing generic spread engine.
-- Anchor the scenario to Douglas-fir as the dominant host species.
+- Set Douglas-fir as the dominant host species.
 - Use the existing red ring rot pathogen settings from the pathogen library.
-- Keep the input simple and explainable, even if it is still synthetic or placeholder-based.
+- Keep the input simple and explainable. It can still be synthetic or placeholder-based.
 
 ## Inputs
-- A small inventory of trees with at least:
+- A small inventory of trees with at least these fields:
   - tree_id
   - x
   - y
@@ -32,8 +32,8 @@ Create a focused prototype scenario that uses the existing engine with a Douglas
   - stress amplification
 
 ## Success criteria
-- The prototype can run for a Douglas-fir grove scenario without changing the core engine.
-- The output clearly identifies the most at-risk trees in a way that is easy to explain.
+- The prototype runs for a Douglas-fir grove scenario. The core engine does not change.
+- The output clearly identifies the most at-risk trees. The output is easy to explain.
 - The artifact documents the assumptions and limitations of the scenario.
 
 ## Non-goals

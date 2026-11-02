@@ -3,22 +3,24 @@ Crosswalk from the City of Eugene POS tree layer's `Tree_speci` strings to
 the engine's host-species keys (the keys used in
 pathogens.PATHOGENS[...]["host_susceptibility"]).
 
-`Tree_speci` holds "Scientific name - common name" in one field, e.g.
-"Pseudotsuga menziesii - Douglas fir". 306 distinct values in the source.
+`Tree_speci` holds "Scientific name - common name" in one field. For
+example: "Pseudotsuga menziesii - Douglas fir". The source has 306 distinct
+values.
 
 Match order (first hit wins):
 1. exact `Tree_speci` string,
 2. "Genus species" (first two scientific-name tokens),
 3. leading genus token.
 
-Anything with no hit -- including "Unknown" and blank -- returns None and
-the caller drops that tree as a non-host (susceptibility 0.0). See
-docs/notes/site_tree_host_inventory.md for why the mapping is genus-level
-for most genera but species-level for Fraxinus.
+Anything with no hit returns None. This includes "Unknown" and blank
+values. The caller then drops that tree as a non-host (susceptibility
+0.0). See docs/notes/site_tree_host_inventory.md for why the mapping is
+genus-level for most genera but species-level for Fraxinus.
 """
 
-# Genus -> engine host key. One engine key per genus; the engine's
-# host_susceptibility does not distinguish species within these genera.
+# Genus to engine host key. Each genus maps to one engine key. The
+# engine's host_susceptibility does not distinguish species within these
+# genera.
 _GENUS_TO_ENGINE = {
     "Acer": "maple",
     "Quercus": "oak",
@@ -29,9 +31,10 @@ _GENUS_TO_ENGINE = {
     "Tsuga": "western_hemlock",
 }
 
-# "Genus species" -> engine host key, checked before the genus fallback.
-# Only the two ash species with a defensible engine key are listed;
-# other Fraxinus (ornamental cultivars, "Fraxinus spp") stay unmapped.
+# "Genus species" to engine host key. These are checked before the genus
+# fallback. Only the two ash species with a defensible engine key are
+# listed. Other Fraxinus (ornamental cultivars, "Fraxinus spp") stay
+# unmapped.
 _SPECIES_TO_ENGINE = {
     "Fraxinus latifolia": "oregon_ash",
     "Fraxinus pennsylvanica": "green_ash",
@@ -39,8 +42,9 @@ _SPECIES_TO_ENGINE = {
 
 
 def _scientific_name(raw_tree_speci):
-    """The part before ' - ' (or the whole string if there is no dash),
-    handling the stray cp1252 em dash (0x97) seen in some common names."""
+    """The part before ' - ' (or the whole string if there is no dash).
+    It also handles the stray cp1252 em dash (0x97) seen in some common
+    names."""
     text = raw_tree_speci.replace("\x97", "-")
     return text.split(" - ", 1)[0].strip()
 

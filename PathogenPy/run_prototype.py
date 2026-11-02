@@ -1,6 +1,6 @@
 """
-Prototype runner: generates synthetic data, runs the spread engine for
-multiple pathogens, and plots risk maps side by side.
+Prototype runner. It generates synthetic data, runs the spread engine for
+several pathogens, and plots risk maps side by side.
 
 Run with: python3 run_prototype.py
 """

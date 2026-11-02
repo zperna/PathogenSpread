@@ -1,18 +1,18 @@
 """
 Generates a synthetic tree inventory so the spread engine can be tested
-before real field data exists. Swap this out for a real inventory (CSV,
-shapefile, Field Maps export, etc.) later -- the engine just needs a
+before real field data exists. Replace this with a real inventory (CSV,
+shapefile, Field Maps export, etc.) later. The engine only needs a
 DataFrame with these columns:
 
     tree_id, x, y, species, dbh_in, stress_index, infected
 
-x/y are in meters on a local projected grid (not lat/lon) so distance
-math is straightforward. When you bring in real data, project it to a
-local UTM zone or state plane first.
+x/y are in meters on a local projected grid (not lat/lon). This keeps
+distance math simple. Before you use real data, project it to a local
+UTM zone or state plane.
 
 stress_index: 0-1, where 1.0 = highly stressed (drought, compaction,
-    root damage, etc.) -- this is exactly the kind of field observation
-    an arborist doing canopy work is well positioned to log.
+    root damage, etc.). An arborist doing canopy work is well positioned
+    to log this kind of field observation.
 """
 
 import numpy as np
@@ -26,9 +26,9 @@ SPECIES_POOL = [
 
 def generate_inventory(n_trees=400, area_size_m=2000, n_index_cases=3, seed=42):
     """
-    Creates a random tree inventory scattered over a square area,
-    with a handful of trees marked as initial infection sources
-    ("index cases") to seed the spread simulation.
+    Creates a random tree inventory scattered over a square area.
+    A few trees are marked as initial infection sources ("index cases").
+    These seed the spread simulation.
     """
     rng = np.random.default_rng(seed)
 
@@ -38,11 +38,11 @@ def generate_inventory(n_trees=400, area_size_m=2000, n_index_cases=3, seed=42):
         "y": rng.uniform(0, area_size_m, n_trees),
         "species": rng.choice(SPECIES_POOL, n_trees),
         "dbh_in": np.round(rng.uniform(4, 36, n_trees), 1),
-        "stress_index": np.round(rng.beta(2, 5, n_trees), 2),  # skewed toward low stress
+        "stress_index": np.round(rng.beta(2, 5, n_trees), 2),  # Skewed toward low stress
         "infected": False,
     })
 
-    # seed a small cluster of index cases so the map has a clear origin point
+    # Seed a small group of index cases so the map has a clear origin point.
     index_ids = rng.choice(df.index, n_index_cases, replace=False)
     df.loc[index_ids, "infected"] = True
 
@@ -56,8 +56,8 @@ def generate_douglas_fir_grove_inventory(
     seed=11,
 ):
     """
-    Creates a Douglas-fir-dominated grove scenario with a small set of
-    initial infected trees, suitable for the red ring rot prototype.
+    Creates a grove scenario dominated by Douglas-fir. The grove has a
+    small set of initial infected trees. It suits the red ring rot prototype.
     """
     rng = np.random.default_rng(seed)
     center = area_size_m / 2
@@ -95,14 +95,15 @@ def generate_douglas_fir_grove_inventory(
 
 def generate_environment_grid(area_size_m=2000, resolution_m=50, seed=7):
     """
-    Creates a simple synthetic environmental raster: normalized 0-1
-    'moisture' and 'temp_suitability' surfaces. Placeholder for real
-    Daymet/soils data pulled the same way you did in GEOG 562.
+    Creates a simple synthetic environmental raster. It holds normalized
+    0-1 'moisture' and 'temp_suitability' surfaces. This is a placeholder
+    for real Daymet/soils data. Pull that data the same way you did in
+    GEOG 562.
     """
     rng = np.random.default_rng(seed)
     n = int(area_size_m / resolution_m)
 
-    # smooth-ish random fields via simple blurring so it doesn't look like noise
+    # Blur the random fields so they do not look like noise.
     from scipy.ndimage import gaussian_filter
     moisture = gaussian_filter(rng.random((n, n)), sigma=3)
     temp = gaussian_filter(rng.random((n, n)), sigma=3)

@@ -1,19 +1,21 @@
 """
 Looks up the nearest Oregon ASOS/AWOS weather station to each site's AOI
-centroid and derives a prevailing wind direction + directionality strength
-from its historical wind rose, via the Iowa Environmental Mesonet (IEM)'s
-public API (see docs/feature_contracts/real_wind_data.md for why IEM,
-despite the name, and docs/notes/real_wind_data.md for the parsing/circular-
-statistics details).
+centroid. Derives a prevailing wind direction and a directionality
+strength from that station's historical wind rose. The data comes from
+the Iowa Environmental Mesonet (IEM) public API.
 
-Run with the plain project .venv -- no arcpy required, just stdlib
-urllib. Requires each data/<site_name>/grid_meta.json to already have
-centroid_lat/centroid_lon (written by export_site_layers.py under Pro's
-Python).
+See docs/feature_contracts/real_wind_data.md for why IEM was chosen,
+despite its name. See docs/notes/real_wind_data.md for the parsing and
+circular-statistics details.
 
-This produces data/<site_name>/wind_rose.json, which
-run_real_site_risk_raster.py feeds into spread_engine.py's wind-aware
-dispersal kernel for airborne/vector-transmitted pathogens -- see
+Run with the plain project .venv. No arcpy is needed. The script uses
+only the stdlib urllib module. Each data/<site_name>/grid_meta.json must
+already contain centroid_lat and centroid_lon. export_site_layers.py
+writes these under Pro's Python.
+
+This writes data/<site_name>/wind_rose.json. run_real_site_risk_raster.py
+passes that file to the wind-aware dispersal kernel in spread_engine.py.
+The kernel applies to airborne and vector-transmitted pathogens. See
 docs/feature_contracts/wind_dispersal_and_soil_reweight.md Part B.
 """
 
@@ -28,11 +30,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_ROOT = PROJECT_ROOT / "data"
 
 IEM_BASE = "https://mesonet.agron.iastate.edu"
-NETWORK = "OR_ASOS"  # all current sites are Oregon AOIs -- see contract non-goals
+NETWORK = "OR_ASOS"  # All current sites are Oregon AOIs. See contract non-goals.
 
-# Below this many historical observations, treat a station as too sparse to
-# trust and fall back to the next-nearest one -- a station being listed in
-# the network doesn't guarantee it has a usable long-term record.
+# Below this many historical observations, a station is too sparse to
+# trust. Fall back to the next-nearest station. A station in the network
+# list does not always have a usable long-term record.
 MIN_OBSERVATION_COUNT = 1000
 
 SITE_NAMES = ["site", "site_phytophthora", "site_anthracnose"]
@@ -53,16 +55,16 @@ def fetch_json(url):
 
 
 def fetch_text(url):
-    # A station with a long historical record (e.g. EUG, 597k observations
-    # since 1948) can take ~45s server-side to aggregate for justdata=true
-    # -- confirmed by direct timing, not a flaky connection -- so this
-    # needs a longer timeout than a typical JSON metadata call.
+    # A station with a long historical record can take ~45s on the server
+    # to aggregate for justdata=true. Example: EUG (597k observations since
+    # 1948). Direct timing confirmed this. The connection is not flaky. So
+    # this call needs a longer timeout than a typical JSON metadata call.
     with urllib.request.urlopen(url, timeout=120) as resp:
         return resp.read().decode("utf-8")
 
 
 def list_stations_by_distance(lat, lon):
-    """Returns [(distance_km, station_id, station_name), ...] sorted nearest-first."""
+    """Returns [(distance_km, station_id, station_name), ...], sorted nearest first."""
     geojson = fetch_json(f"{IEM_BASE}/geojson/network.py?network={NETWORK}")
     stations = []
     for feature in geojson["features"]:
@@ -75,14 +77,15 @@ def list_stations_by_distance(lat, lon):
 
 
 def parse_wind_rose_table(raw_text):
-    """Parses IEM's justdata=true wind rose table into per-sector total
-    frequencies (speed bins summed, calm excluded) plus the station-wide
-    calm percent and observation count.
+    """Parses IEM's justdata=true wind rose table.
+
+    Returns per-sector total frequencies (speed bins summed, calm excluded).
+    Also returns the station-wide calm percent and observation count.
 
     Table quirk (confirmed against the raw response, not a summary of it):
-    only the *first* data row's Calm column is populated -- it's a
-    station-wide scalar placed there for tabular convenience, not a value
-    for that row's own direction sector.
+    Only the *first* data row's Calm column is populated. That value is a
+    station-wide scalar. It is placed there for table layout. It is not a
+    value for that row's own direction sector.
     """
     observation_count = None
     calm_percent = None
@@ -99,7 +102,7 @@ def parse_wind_rose_table(raw_text):
         if not line.strip():
             continue
         if not header_seen:
-            header_seen = True  # first non-comment line is the column header, skip it
+            header_seen = True  # First non-comment line is the column header. Skip it.
             continue
 
         fields = [f.strip() for f in line.split(",")]
@@ -118,9 +121,9 @@ def parse_wind_rose_table(raw_text):
 
 
 def circular_direction_and_strength(sector_frequencies):
-    """Mean resultant direction/length of the per-sector frequency
-    distribution -- see docs/notes/real_wind_data.md for why this instead
-    of just taking the max-frequency sector."""
+    """Mean resultant direction and length of the per-sector frequency
+    distribution. See docs/notes/real_wind_data.md for why this is used
+    instead of only the max-frequency sector."""
     sin_sum = 0.0
     cos_sum = 0.0
     total_freq = 0.0

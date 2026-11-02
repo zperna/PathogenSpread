@@ -1,13 +1,14 @@
 """
-Minimal stdlib writer for an ESRI point shapefile plus its .dbf attribute
-table, .prj, and .cpg. The write-direction counterpart to
-shapefile_reader.py -- same format knowledge, no geopandas/fiona/pyshp,
-no arcpy (see docs/notes/tree_point_export.md, Option B precedent from
-docs/notes/site_tree_host_inventory.md).
+Minimal stdlib writer for an ESRI point shapefile. It also writes the .dbf
+attribute table, .prj, and .cpg files. This is the write-direction
+counterpart to shapefile_reader.py. It uses the same format knowledge.
+It uses no geopandas, fiona, pyshp, or arcpy. See
+docs/notes/tree_point_export.md. The Option B precedent is in
+docs/notes/site_tree_host_inventory.md.
 
-Scope on purpose: points only, one fixed output CRS (EPSG:32610, the CRS
-every site raster and the POS-derived inventory already use in this
-project).
+The scope is narrow on purpose. It writes points only. It writes one
+fixed output CRS, EPSG:32610. Every site raster and the POS-derived
+inventory already use this CRS in this project.
 """
 
 import math
@@ -17,17 +18,18 @@ from pathlib import Path
 import pandas as pd
 
 SHAPE_TYPE_POINT = 1
-SHP_HEADER_WORDS = 50   # 100-byte main-file / index-file header, in 16-bit words
+SHP_HEADER_WORDS = 50   # 100-byte .shp and .shx header, in 16-bit words
 SHP_RECORD_CONTENT_WORDS = 10  # shape type (4 bytes) + x + y (8 bytes each) = 20 bytes
 SHX_ENTRY_WORDS = 4     # offset + content length, 4 bytes each
 
 DBF_VERSION = 0x03
 DBF_FIELD_TERMINATOR = 0x0D
-DBF_RECORD_LIVE = 0x20  # ' ' -- not deleted
+DBF_RECORD_LIVE = 0x20  # ' ' (space). The record is not deleted.
 
-# WGS 1984 UTM Zone 10N -- the one CRS this project ever writes a point
-# shapefile in. Quoted verbatim (same CRS arcpy.SpatialReference(32610)
-# uses throughout arcpy_export/export_site_layers.py), not derived.
+# WGS 1984 UTM Zone 10N. This is the only CRS this project writes point
+# shapefiles in. The WKT is quoted verbatim, not derived. It is the same
+# CRS that arcpy.SpatialReference(32610) uses throughout
+# arcpy_export/export_site_layers.py.
 EPSG_32610_WKT = (
     'PROJCS["WGS_1984_UTM_Zone_10N",GEOGCS["GCS_WGS_1984",'
     'DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],'
@@ -50,13 +52,13 @@ def _write_shp_and_shx(shp_path, shx_path, records):
     shx_file_length_words = SHP_HEADER_WORDS + n * SHX_ENTRY_WORDS
 
     def main_header(file_length_words):
-        header = struct.pack(">i", 9994)          # file code
-        header += b"\x00" * 20                    # 5 unused int32s
+        header = struct.pack(">i", 9994)          # File code.
+        header += b"\x00" * 20                    # Five unused int32 values.
         header += struct.pack(">i", file_length_words)
-        header += struct.pack("<i", 1000)          # version
+        header += struct.pack("<i", 1000)          # Version.
         header += struct.pack("<i", SHAPE_TYPE_POINT)
         header += struct.pack("<4d", xmin, ymin, xmax, ymax)
-        header += struct.pack("<4d", 0.0, 0.0, 0.0, 0.0)  # Z/M ranges, unused
+        header += struct.pack("<4d", 0.0, 0.0, 0.0, 0.0)  # Z and M ranges. Not used.
         return header
 
     with open(shp_path, "wb") as shp, open(shx_path, "wb") as shx:
@@ -90,20 +92,20 @@ def _format_dbf_value(value, dbf_type, length, decimals):
 
 
 def _write_dbf(dbf_path, records, field_spec):
-    record_length = 1 + sum(length for _, _, length, _ in field_spec)  # +1 deletion flag
+    record_length = 1 + sum(length for _, _, length, _ in field_spec)  # +1: deletion flag
     header_length = 32 + 32 * len(field_spec) + 1
 
     with open(dbf_path, "wb") as f:
-        f.write(struct.pack("<B3B", DBF_VERSION, 1, 1, 1))  # version + fixed YY/MM/DD
+        f.write(struct.pack("<B3B", DBF_VERSION, 1, 1, 1))  # version, fixed YY/MM/DD
         f.write(struct.pack("<I", len(records)))
         f.write(struct.pack("<HH", header_length, record_length))
-        f.write(b"\x00" * 20)  # reserved
+        f.write(b"\x00" * 20)  # Reserved.
 
         for name, dbf_type, length, decimals in field_spec:
             name_bytes = name.encode("ascii")[:10].ljust(11, b"\x00")
             f.write(name_bytes)
             f.write(dbf_type.encode("ascii"))
-            f.write(b"\x00" * 4)  # field data address, unused on write
+            f.write(b"\x00" * 4)  # Field data address. Not used on write.
             f.write(struct.pack("<BB", length, decimals))
             f.write(b"\x00" * 14)
         f.write(bytes([DBF_FIELD_TERMINATOR]))
@@ -113,15 +115,15 @@ def _write_dbf(dbf_path, records, field_spec):
             for name, dbf_type, length, decimals in field_spec:
                 text = _format_dbf_value(record.get(name), dbf_type, length, decimals)
                 f.write(text.encode("ascii", errors="replace"))
-        f.write(b"\x1a")  # conventional end-of-file marker
+        f.write(b"\x1a")  # Standard end-of-file marker.
 
 
 def write_point_shapefile(path_stem, records, field_spec):
     """
     Writes a point shapefile (.shp/.shx/.dbf/.prj/.cpg) to path_stem.
 
-    records: list of dicts, each {"x": float, "y": float, **attrs} where
-        attrs keys match field_spec's dbf field names.
+    records: list of dicts. Each dict is {"x": float, "y": float, **attrs}.
+        The attrs keys match the dbf field names in field_spec.
     field_spec: list of (dbf_field_name, dbf_type, length, decimals).
         dbf_field_name must be <= 10 characters. dbf_type is "C"
         (character), "N" (numeric), or "L" (logical/boolean). decimals

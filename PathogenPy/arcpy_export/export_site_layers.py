@@ -1,30 +1,30 @@
 """
-Exports real site data from PathogenProject.gdb + gNATSGO_OR.gdb + the local
-NLCD raster + the ODF DEM image service into flat, CRS-free files that the
-arcpy-free engine venv can read.
+Exports real site data from PathogenProject.gdb, gNATSGO_OR.gdb, the local
+NLCD raster, and the ODF DEM image service. The output is flat, CRS-free
+files. The arcpy-free engine venv reads these files.
 
-Run this under ArcGIS Pro's Python, e.g.:
+Run this with ArcGIS Pro's Python. For example:
 
     "C:\\Program Files\\ArcGIS\\Pro\\bin\\Python\\envs\\arcgispro-py3\\python.exe" ^
         export_site_layers.py
 
 See docs/feature_contracts/real_site_risk_raster.md and
-docs/notes/real_site_risk_raster.md for why this is split out of the main
-engine this way (arcpy stays confined to this script and import_risk_raster.py).
+docs/notes/real_site_risk_raster.md for why this script is separate from the
+main engine. Only this script and import_risk_raster.py use arcpy.
 
-Everything gets reprojected to UTM Zone 10N (EPSG:32610, meters) -- the
-source point layer and NLCD are in Oregon Lambert *feet* (EPSG:2992), and
-gNATSGO is in Albers CONUS. The engine's dispersal constants are in meters,
-so this has to be resolved once here rather than in the engine.
+All layers are reprojected to UTM Zone 10N (EPSG:32610, meters). The source
+point layer and NLCD use Oregon Lambert *feet* (EPSG:2992). gNATSGO uses
+Albers CONUS. The engine dispersal constants are in meters. The reprojection
+happens here, once, not in the engine.
 
-Output arrays are stored bottom-up (row 0 = origin_y/ymin), the opposite of
-arcpy.RasterToNumPyArray's top-down convention, so the plain-numpy engine
-can index them with simple (y - origin_y) / resolution_m math.
+Output arrays are stored bottom-up (row 0 = origin_y/ymin). arcpy's
+RasterToNumPyArray uses top-down order (row 0 = north). The plain-numpy
+engine can index the arrays with simple (y - origin_y) / resolution_m math.
 
-One AOI/grid is exported per known-case feature class, each centered on its
-own case(s) -- RedRingRot and Phytophthora are different diseases at
-different real locations, so they each get their own 2 km site grid under
-data/<site_name>/ rather than sharing one.
+One AOI and grid are exported for each known-case feature class. Each grid
+is centered on its own case(s). RedRingRot and Phytophthora are different
+diseases at different real locations. Each gets its own 2 km site grid under
+data/<site_name>/. The grids are not shared.
 """
 
 import csv
@@ -45,8 +45,9 @@ DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data"
 
 TARGET_SR = arcpy.SpatialReference(32610)  # WGS 1984 UTM Zone 10N, meters
 WGS84_SR = arcpy.SpatialReference(4326)  # for the AOI centroid lat/lon fed to fetch_wind_rose.py
-CELL_SIZE_M = 10  # matches native gNATSGO/DEM resolution; NLCD (native 30m) is
-                   # nearest-neighbor upsampled to this grid, not resampled down to it
+CELL_SIZE_M = 10  # matches native gNATSGO/DEM resolution. NLCD (native 30m)
+                   # is upsampled to this grid by nearest-neighbor.
+                   # It is not resampled down.
 AOI_HALF_SIZE_M = 1000  # 2 km square AOI centered on the known case(s)
 
 # feature class name in PathogenProject.gdb -> output folder under data/
@@ -74,29 +75,32 @@ HYDRO_GROUP_CODES = {
 }
 
 # muaggatt.wtdepannmin is NULL when no water table occurs within the
-# reported depth range -- "deep/not applicable", not missing data. Filled
-# with this sentinel (inches) before normalizing so those cells land near 0
-# suitability rather than being mistaken for "at the surface" (0in).
+# reported depth range. NULL means "deep/not applicable", not missing data.
+# NULL cells are filled with this sentinel (inches) before normalizing.
+# This puts them near 0 suitability. They are not mistaken for "at the
+# surface" (0in).
 # Comfortably beyond any real value seen in either site AOI (max 76in).
 WATER_TABLE_DEPTH_NODATA_SENTINEL_IN = 200
 
 # Floor applied to slope (degrees) before computing tan(slope) for the
-# topographic wetness index -- tan(0) is 0, which would make the TWI ratio
+# topographic wetness index. tan(0) is 0. That would make the TWI ratio
 # divide by zero at perfectly flat cells. 0.1 degrees is well below any real
-# slope signal at this resolution, so it only affects genuinely flat cells,
-# where a large (but now finite) TWI is directionally correct anyway.
+# slope signal at this resolution. So it only affects genuinely flat cells.
+# For those, a large (but now finite) TWI is directionally correct anyway.
 TWI_MIN_SLOPE_DEG = 0.1
 
 # Circular neighborhood radius (in cells) for the topographic position
-# index's focal mean -- 150m at the current 10m CELL_SIZE_M, chosen to
-# characterize local ridge/valley position rather than macro-landform, and
-# picked to numerically match red_ring_rot's max_dispersal_distance_m. See
-# docs/notes/wind_exposure_index.md.
+# index focal mean. This is 150m at the current 10m CELL_SIZE_M. It was
+# chosen to characterize local ridge or valley position, not macro-landform.
+# It was also picked to numerically match red_ring_rot's
+# max_dispersal_distance_m. See docs/notes/wind_exposure_index.md.
 EXPOSURE_RADIUS_CELLS = 15
 
 
 def read_known_cases(fc_name):
-    """Reads a known-case point feature class, reprojected to the target CRS (meters)."""
+    """Reads a known-case point feature class.
+    Reprojects it to the target CRS (meters).
+    """
     fc = PATHOGEN_GDB + "\\" + fc_name
     fields = ["OID@", "SHAPE@", "tree_id", "species", "stress_index", "infected"]
     records = []
@@ -120,10 +124,10 @@ def build_aoi_extent(known_cases):
     xs = [r["x"] for r in known_cases]
     ys = [r["y"] for r in known_cases]
     cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
-    # spatial_reference must be attached here, not just set via
-    # arcpy.env.outputCoordinateSystem later -- otherwise ArcGIS may
-    # interpret these meter-based coordinates in the wrong CRS depending on
-    # environment-setting order, and silently fall back to processing the
+    # Attach spatial_reference here. Do not rely only on
+    # arcpy.env.outputCoordinateSystem, which is set later. Without it, ArcGIS
+    # may read these meter coordinates in the wrong CRS. The result depends on
+    # the order of environment settings. ArcGIS can then silently process the
     # entire input raster instead of clipping to the AOI.
     return arcpy.Extent(
         cx - AOI_HALF_SIZE_M, cy - AOI_HALF_SIZE_M,
@@ -133,12 +137,13 @@ def build_aoi_extent(known_cases):
 
 
 def raster_to_bottom_up_array(raster_path, nodata_to_value=None):
-    """RasterToNumPyArray is top-down (row 0 = north); flip so row 0 = south,
-    matching the engine's (y - origin_y) / resolution_m indexing.
+    """RasterToNumPyArray is top-down (row 0 = north).
+    Flip it so row 0 = south. This matches the engine's
+    (y - origin_y) / resolution_m indexing.
 
-    nodata_to_value fills NoData cells explicitly -- needed wherever
-    NoData's default fill (0) would collide with a real, differently-meant
-    value (e.g. water table depth, where 0 means "at the surface").
+    nodata_to_value fills NoData cells explicitly. Use it when the default
+    NoData fill (0) collides with a real value that means something else.
+    For example, water table depth, where 0 means "at the surface".
     """
     if nodata_to_value is None:
         arr = arcpy.RasterToNumPyArray(raster_path)
@@ -161,11 +166,12 @@ def export_land_cover(aoi_extent, reference_dir):
 
 
 def export_soil_surfaces(aoi_extent, reference_dir):
-    """Joins MapunitRaster_10m's MUKEY to three muaggatt water/drainage
-    attributes in one pass (drclassdcd, hydgrpdcd, wtdepannmin), reclassifies
-    the two categorical ones to small integer codes, then reprojects/
-    resamples all three. See docs/feature_contracts/soil_water_attributes.md
-    for why these three specifically."""
+    """Joins MapunitRaster_10m's MUKEY to three muaggatt water and drainage
+    attributes in one pass (drclassdcd, hydgrpdcd, wtdepannmin). Two of the
+    three are categorical. The function reclassifies them to small integer
+    codes. Then it reprojects and resamples all three. See
+    docs/feature_contracts/soil_water_attributes.md for why these three
+    specifically."""
     mapunit_raster = GNATSGO_GDB + r"\MapunitRaster_10m"
     muaggatt = GNATSGO_GDB + r"\muaggatt"
 
@@ -185,10 +191,10 @@ def export_soil_surfaces(aoi_extent, reference_dir):
     )
 
     arcpy.management.AddField(working_raster, "hydro_code", "SHORT")
-    # Dual ratings (e.g. "A/D") describe a soil that would drain as the
-    # first letter if artificially drained, second letter under natural
-    # conditions -- nothing in this project's data represents engineered
-    # drainage, so resolve to the natural (second-letter) rating.
+    # Dual ratings (e.g. "A/D") give two groups. The first letter applies if
+    # the soil is artificially drained. The second letter applies under
+    # natural conditions. This project has no engineered drainage data. So
+    # the code uses the natural (second-letter) rating.
     hydro_code_block = "def code(group):\n" \
         "    if not group:\n" \
         "        return 0\n" \
@@ -227,26 +233,28 @@ def export_soil_surfaces(aoi_extent, reference_dir):
 
 
 def export_terrain(aoi_extent, reference_dir):
-    """Pulls a permanent local DEM clip from the live ODF image service, then
-    derives Slope, Aspect, a topographic wetness index, and a topographic
-    position index from that local copy (not the live service). See
-    docs/feature_contracts/topographic_wetness_index.md and
-    docs/feature_contracts/wind_exposure_index.md for why TWI/TPI are
-    exported alongside slope/aspect rather than replacing them."""
-    # The service doesn't expose its SR via a plain Describe(url)/ProjectRaster
-    # call, so Clip can't be pointed at it using aoi_extent's meters
-    # coordinates directly. It's EPSG:2992 (confirmed via the layer as loaded
-    # in PathogenProject.aprx) -- reproject the AOI corners into that CRS
-    # (feet) so Clip can cut the service down before anything else touches it.
+    """Pulls a permanent local DEM clip from the live ODF image service.
+    It then derives Slope, Aspect, a topographic wetness index, and a topographic
+    position index from that local copy. It does not use the live service for
+    these. See docs/feature_contracts/topographic_wetness_index.md and
+    docs/feature_contracts/wind_exposure_index.md. They explain why TWI and TPI
+    are exported with slope and aspect, not in place of them."""
+    # The service does not expose its SR through a plain Describe(url) or
+    # ProjectRaster call. So Clip cannot use aoi_extent's meter coordinates
+    # directly. The service uses EPSG:2992. This was confirmed from the
+    # layer as loaded in PathogenProject.aprx. Reproject the AOI corners into
+    # that CRS (feet). Then Clip can cut the service down before anything
+    # else uses it.
     service_sr = arcpy.SpatialReference(2992)
     lower_left = arcpy.PointGeometry(arcpy.Point(aoi_extent.XMin, aoi_extent.YMin), TARGET_SR).projectAs(service_sr).firstPoint
     upper_right = arcpy.PointGeometry(arcpy.Point(aoi_extent.XMax, aoi_extent.YMax), TARGET_SR).projectAs(service_sr).firstPoint
     rectangle = f"{lower_left.X} {lower_left.Y} {upper_right.X} {upper_right.Y}"
 
-    # Leftover extent/outputCoordinateSystem/cellSize env settings from the
-    # land cover and soil exports (a different CRS/extent than the DEM
-    # service's own) make this Clip call against the live service hang
-    # indefinitely instead of returning in a few seconds -- reset them first.
+    # Env settings left over from the land cover and soil exports can break
+    # this step. These are extent, outputCoordinateSystem, and cellSize. They
+    # use a different CRS and extent than the DEM service. With them set, this
+    # Clip call against the live service hangs indefinitely instead of
+    # returning in a few seconds. Reset them first.
     arcpy.env.extent = None
     arcpy.env.outputCoordinateSystem = None
     arcpy.env.cellSize = None
@@ -274,14 +282,14 @@ def export_terrain(aoi_extent, reference_dir):
 
     # Topographic wetness index: ln(specific_catchment_area / tan(slope)).
     # Fill -> FlowDirection -> FlowAccumulation is the standard prerequisite
-    # chain (D8, Spatial Analyst's default) for deriving contributing area
-    # from a DEM.
+    # chain. It uses D8, the Spatial Analyst default. The chain derives
+    # contributing area from a DEM.
     filled_dem = arcpy.sa.Fill(dem_local)
     flow_direction = arcpy.sa.FlowDirection(filled_dem)
     flow_accumulation = arcpy.sa.FlowAccumulation(flow_direction)
-    # +1 counts the cell's own unit contribution -- standard convention,
-    # also avoids a zero specific catchment area at ridge cells (flow
-    # accumulation 0).
+    # +1 counts the cell's own unit contribution. This is the standard
+    # convention. It also avoids a zero specific catchment area at ridge cells
+    # (flow accumulation 0).
     specific_catchment_area = (flow_accumulation + 1) * CELL_SIZE_M
     slope_deg_clamped = arcpy.sa.Con(slope_raster < TWI_MIN_SLOPE_DEG, TWI_MIN_SLOPE_DEG, slope_raster)
     slope_radians = slope_deg_clamped * (math.pi / 180)
@@ -290,11 +298,11 @@ def export_terrain(aoi_extent, reference_dir):
     wetness_index.save(wetness_path)
 
     # Topographic position index: elevation relative to the local
-    # neighborhood mean. Positive = ridge/convex (more wind-exposed),
-    # negative = valley/concave (sheltered). ignore_nodata=True (the
-    # default) means the focal mean still computes near the AOI edge from
-    # whatever valid cells fall in the window, so this doesn't widen the
-    # NoData band beyond what the source DEM already has.
+    # neighborhood mean. Positive = ridge/convex (more wind-exposed).
+    # Negative = valley/concave (sheltered). ignore_nodata=True (the default)
+    # lets the focal mean compute near the AOI edge. It uses whatever valid
+    # cells fall in the window. So this step does not widen the NoData band
+    # beyond what the source DEM already has.
     neighborhood = arcpy.sa.NbrCircle(EXPOSURE_RADIUS_CELLS, "CELL")
     focal_mean_elevation = arcpy.sa.FocalStatistics(dem_local, neighborhood, "MEAN")
     exposure_index = arcpy.sa.Raster(dem_local) - focal_mean_elevation
@@ -323,13 +331,14 @@ def export_case_layer(fc_name, site_name):
     wtdepth_arr = raster_to_bottom_up_array(
         soil_paths["soil_water_table_depth"], nodata_to_value=WATER_TABLE_DEPTH_NODATA_SENTINEL_IN
     )
-    # Slope/Aspect/TWI/TPI are float rasters with a real NoData edge (DEM
-    # reprojection leaves a thin NoData band at the AOI boundary where
-    # bilinear resampling had no source coverage); RasterToNumPyArray's
-    # default float NoData fill is the dtype's min/max representable value
-    # (~+/-3.4e38), which silently wrecks downstream min-max normalization
-    # if not caught. NaN makes these cells explicit instead, handled
-    # downstream in spatial_inputs.py (score_terrain / load_site_grid).
+    # Slope, Aspect, TWI, and TPI are float rasters with a real NoData edge.
+    # DEM reprojection leaves a thin NoData band at the AOI boundary. Bilinear
+    # resampling had no source coverage there. RasterToNumPyArray's default
+    # float NoData fill is the dtype's min or max representable value
+    # (~+/-3.4e38). That fill silently breaks downstream min-max
+    # normalization if it is not caught. NaN makes these cells explicit
+    # instead. spatial_inputs.py handles them
+    # (score_terrain / load_site_grid).
     slope_arr = raster_to_bottom_up_array(slope_path, nodata_to_value=np.nan)
     aspect_arr = raster_to_bottom_up_array(aspect_path, nodata_to_value=np.nan)
     wetness_arr = raster_to_bottom_up_array(wetness_path, nodata_to_value=np.nan)
@@ -342,13 +351,13 @@ def export_case_layer(fc_name, site_name):
     }
     shapes = {name: arr.shape for name, arr in layers.items()}
     if len(set(shapes.values())) != 1:
-        # Reprojecting from different source CRSs (NLCD's feet-based grid vs.
-        # the Albers/feet-based soil and DEM sources) lands each output on a
-        # slightly different pixel phase even for the same real-world extent,
-        # so row/col counts can differ by a few cells. All layers share the
-        # same origin (bottom-left) corner since they were all clipped with
-        # the same aoi_extent, so it's safe to crop from that corner down to
-        # the common shape rather than fail outright.
+        # Each layer comes from a different source CRS. NLCD uses a feet-based
+        # grid. The soil and DEM sources are Albers or feet-based. Reprojection
+        # puts each output on a slightly different pixel phase, even for the
+        # same real-world extent. So row and column counts can differ by a few
+        # cells. All layers share the same origin (bottom-left) corner. They
+        # were all clipped with the same aoi_extent. So it is safe to crop from
+        # that corner to the common shape. The script crops instead of failing.
         n_rows = min(s[0] for s in shapes.values())
         n_cols = min(s[1] for s in shapes.values())
         print(f"[{fc_name}] Layer grids not pixel-aligned ({shapes}) -- cropping all to ({n_rows}, {n_cols}) from the origin corner")
@@ -377,9 +386,9 @@ def export_case_layer(fc_name, site_name):
     with open(out_dir / "hydro_groups.json", "w") as f:
         json.dump({code: name for name, code in HYDRO_GROUP_CODES.items()}, f, indent=2)
 
-    # Centroid lat/lon, for fetch_wind_rose.py's nearest-station lookup --
-    # computed here (arcpy already available) rather than in the plain
-    # venv, which has no pyproj/arcpy to do this projection itself.
+    # Centroid lat/lon, for the nearest-station lookup in fetch_wind_rose.py.
+    # It is computed here because arcpy is available here. The plain venv has
+    # no pyproj or arcpy, so it cannot do this projection itself.
     centroid = arcpy.PointGeometry(
         arcpy.Point((aoi_extent.XMin + aoi_extent.XMax) / 2, (aoi_extent.YMin + aoi_extent.YMax) / 2),
         TARGET_SR,
