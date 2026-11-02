@@ -56,10 +56,11 @@ real parcel. The dark hotspot has its peak at the known case.
 
 ![Red Ring Rot site risk raster in ArcGIS Pro](docs/images/red_ring_rot_risk_pro_preview.png)
 
-The image below shows a site risk raster (magenta) in ArcGIS Pro over
-aerial imagery. The points are POS tree locations.
+The image below shows the Anthracnose risk raster (magenta) in ArcGIS Pro
+over aerial imagery. The risk comes from two known sources. The points are
+POS tree locations.
 
-![Site risk raster with POS tree points in ArcGIS Pro](docs/images/Screenshot%202026-09-11%20115139.png)
+![Anthracnose risk raster from two known sources in ArcGIS Pro](docs/images/Screenshot%202026-09-11%20115139.png)
 
 ## Repository layout
 
